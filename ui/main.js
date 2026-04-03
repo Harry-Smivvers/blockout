@@ -28,8 +28,8 @@
     // into the #np0/#np1/#np2 canvas elements already in the HUD.
     updateNextPieces(_piecesArray) {},
 
-    updateLayerIndicator(layerArray, currentLayer) {
-      if (window.uiLayers) window.uiLayers.update(layerArray, currentLayer);
+    updateLayerIndicator(layerArray, currentLayer, layerColors) {
+      if (window.uiLayers) window.uiLayers.update(layerArray, currentLayer, layerColors);
     },
 
     setGridButtonActive(isActive) {
