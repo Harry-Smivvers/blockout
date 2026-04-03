@@ -95,7 +95,7 @@ body {
   <header id="hud">
     <span id="hud-score">&#11088; 0</span>
 
-    <!-- Next-piece previews (Three.js renders directly into these canvases) -->
+    <!-- Next-piece previews (rendered by separate WebGL contexts) -->
     <div id="next-pieces">
       <canvas id="np0" class="next-preview"></canvas>
       <canvas id="np1" class="next-preview"></canvas>
@@ -180,10 +180,112 @@ body {
   <div class="safari-bottom-spacer"></div>
 </div>
 
-<!-- Three.js r128 (CDN — do not change) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 'use strict';
+
+// ── MATH HELPERS (kein Three.js) ─────────────────────────────────────────────
+
+// HSL → RGB floats [0..1]
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [r, g, b];
+}
+
+// Hex integer → [r, g, b] float array (0..1) for WebGL uniforms
+function hexToRgb(hex) {
+  return [(hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255];
+}
+
+// HSL → integer hex
+function hslToHex(h, s, l) {
+  const [r, g, b] = hslToRgb(h, s, l);
+  return (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255);
+}
+
+// 4×4 Perspektiv-Projektionsmatrix (column-major Float32Array)
+function mat4Perspective(fovDeg, aspect, near, far) {
+  const f  = 1.0 / Math.tan(fovDeg * Math.PI / 360);
+  const nf = 1 / (near - far);
+  const out = new Float32Array(16);
+  out[0]  = f / aspect;
+  out[5]  = f;
+  out[10] = (far + near) * nf;
+  out[11] = -1;
+  out[14] = 2 * far * near * nf;
+  return out;
+}
+
+// 4×4 LookAt-View-Matrix (column-major Float32Array)
+// eye, center, up sind jeweils [x, y, z]
+function mat4LookAt(eye, center, up) {
+  let fx = eye[0] - center[0], fy = eye[1] - center[1], fz = eye[2] - center[2];
+  let len = Math.sqrt(fx*fx + fy*fy + fz*fz);
+  fx /= len; fy /= len; fz /= len;
+
+  let sx = up[1]*fz - up[2]*fy;
+  let sy = up[2]*fx - up[0]*fz;
+  let sz = up[0]*fy - up[1]*fx;
+  len = Math.sqrt(sx*sx + sy*sy + sz*sz);
+  sx /= len; sy /= len; sz /= len;
+
+  const ux = fy*sz - fz*sy;
+  const uy = fz*sx - fx*sz;
+  const uz = fx*sy - fy*sx;
+
+  const ex = eye[0], ey = eye[1], ez = eye[2];
+  const out = new Float32Array(16);
+  out[0]  = sx;  out[1]  = ux;  out[2]  = fx;  out[3]  = 0;
+  out[4]  = sy;  out[5]  = uy;  out[6]  = fy;  out[7]  = 0;
+  out[8]  = sz;  out[9]  = uz;  out[10] = fz;  out[11] = 0;
+  out[12] = -(sx*ex + sy*ey + sz*ez);
+  out[13] = -(ux*ex + uy*ey + uz*ez);
+  out[14] = -(fx*ex + fy*ey + fz*ez);
+  out[15] = 1;
+  return out;
+}
+
+// Zwei 4×4 column-major Matrizen multiplizieren → neue Float32Array(16)
+function mat4Multiply(a, b) {
+  const out = new Float32Array(16);
+  for (let i = 0; i < 4; i++)
+    for (let j = 0; j < 4; j++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k*4 + j] * b[i*4 + k];
+      out[i*4 + j] = s;
+    }
+  return out;
+}
+
+// Einheitsmatrix
+function mat4Identity() {
+  const out = new Float32Array(16);
+  out[0] = out[5] = out[10] = out[15] = 1;
+  return out;
+}
+
+// Translationsmatrix
+function mat4Translation(x, y, z) {
+  const out = mat4Identity();
+  out[12] = x; out[13] = y; out[14] = z;
+  return out;
+}
 
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 const GW = 5, GD = 5, GH = 20;
@@ -217,11 +319,10 @@ const COLORS = [
 ];
 
 // Golden-angle hue per layer so adjacent layers never share similar hue
-const LAYER_COLORS = Array.from({ length: GH }, (_, i) => {
-  const c = new THREE.Color();
-  c.setHSL((i * 0.618033988749895) % 1, 0.88, 0.54);
-  return c.getHex();
-});
+const LAYER_COLORS = Array.from({ length: GH }, (_, i) =>
+  hslToHex((i * 0.618033988749895) % 1, 0.88, 0.54)
+);
+const LAYER_COLORS_RGB = LAYER_COLORS.map(hexToRgb);
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 let grid = [], gridColor = [];
@@ -235,51 +336,211 @@ let dropTimer = 0, dropInterval = 10000, lastT = 0;
 let controlsVisible = window.innerWidth < 1025; // bright lines on mobile from the start
 let inputPaused = false;             // temporary pause while falltime input is focused
 
-// ── THREE.JS ─────────────────────────────────────────────────────────────────
+// ── WEBGL GLOBALS ─────────────────────────────────────────────────────────────
+let gl = null;
+let solidProg = null, lineProg = null;
+// Cached attribute / uniform locations — filled by initWebGL()
+let solid_aPos, solid_uMVP, solid_uColor;
+let line_aPos,  line_uMVP,  line_uColor, line_uAlpha;
+let glVP = null;           // View-Projection matrix, updated by resize()
+let fieldBufs = [];        // [{ buf, count, color:[r,g,b] }] — rebuilt by buildField()
+let placedCells = [];      // [{ wx, wy, wz, rgb:[r,g,b] }] — rebuilt by renderPlaced()
+let pieceCells  = [];      // [{ wx, wy, wz }] — active piece cells
+let pieceRgb    = null;    // [r,g,b] of active piece
+let ghostCells  = [];      // [{ wx, wy, wz }] — ghost drop preview cells
+let ghostRgb    = null;    // [r,g,b] of ghost (same as piece)
+
 const canvas = document.getElementById('gameCanvas');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setClearColor(0x06080f);
 
-const scene  = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
-
-const grpField  = new THREE.Group();
-const grpPiece  = new THREE.Group();
-const grpGhost  = new THREE.Group();
-const grpPlaced = new THREE.Group();
-scene.add(grpField, grpPlaced, grpGhost, grpPiece);
-
-// ── NEXT-PIECE PREVIEW RENDERERS ──────────────────────────────────────────────
-const npRenderers = [], npScenes = [], npCameras = [];
-for (let i = 0; i < 3; i++) {
-  const c = document.getElementById('np' + i);
-  const r = new THREE.WebGLRenderer({ canvas: c, antialias: true, alpha: true });
-  r.setClearColor(0x000000, 0);
-  const s = new THREE.Scene();
-  const k = new THREE.PerspectiveCamera(48, 1, 0.1, 50);
-  k.position.set(3.2, 3.2, 4);
-  k.lookAt(1, 0.5, 1);
-  npRenderers.push(r); npScenes.push(s); npCameras.push(k);
-}
-
-// Cache canvas elements and last-known sizes to avoid setSize every frame
+// ── NEXT-PIECE PREVIEW (WebGL) ────────────────────────────────────────────────
 const npCanvases = [0, 1, 2].map(i => document.getElementById('np' + i));
 const npSizes    = npCanvases.map(() => ({ w: 0, h: 0 }));
+const npGl       = [];   // separate WebGL context per preview canvas
+const npProg     = [];   // line shader program per context
+const npLoc      = [];   // { aPos, uMVP, uColor, uAlpha } per context
+const npEdgeBuf  = [];   // { buf, count } edge cube buffer per context
+const npVP       = [];   // VP matrix per context (updated by updateNpSizes)
+const npQueues   = [[], [], []];  // [{wx,wy,wz}...] per preview slot
+const npRgbs     = [null, null, null]; // [r,g,b] per preview slot
 
-// Call setSize only when the measured CSS size actually changed.
-// Pass `false` so Three.js never overwrites canvas.style.width/height
-// (which would trigger layout-reflows and cause flicker every frame).
+function initNpWebGL() {
+  for (let i = 0; i < 3; i++) {
+    const ctx = npCanvases[i].getContext('webgl')
+             || npCanvases[i].getContext('experimental-webgl');
+    npGl.push(ctx);
+
+    const prog = _linkProgram(ctx, VERT_SRC, LINE_FRAG_SRC);
+    npProg.push(prog);
+    npLoc.push({
+      aPos:   ctx.getAttribLocation (prog, 'aPos'),
+      uMVP:   ctx.getUniformLocation(prog, 'uMVP'),
+      uColor: ctx.getUniformLocation(prog, 'uColor'),
+      uAlpha: ctx.getUniformLocation(prog, 'uAlpha'),
+    });
+
+    const buf = ctx.createBuffer();
+    ctx.bindBuffer(ctx.ARRAY_BUFFER, buf);
+    ctx.bufferData(ctx.ARRAY_BUFFER, EDGE_CUBE_VERTS, ctx.STATIC_DRAW);
+    npEdgeBuf.push({ buf, count: EDGE_CUBE_VERTS.length / 3 });
+
+    ctx.enable(ctx.DEPTH_TEST);
+    ctx.enable(ctx.BLEND);
+    ctx.blendFunc(ctx.SRC_ALPHA, ctx.ONE_MINUS_SRC_ALPHA);
+    ctx.clearColor(0, 0, 0, 0);  // transparent background
+
+    npVP.push(null);  // filled by updateNpSizes()
+  }
+}
+
+// Update canvas pixel size and VP matrix when CSS size changes.
+// Never called from the render loop — only from resize().
 function updateNpSizes() {
+  if (!npGl.length) return;
   for (let i = 0; i < 3; i++) {
     const w = npCanvases[i].clientWidth  || 28;
     const h = npCanvases[i].clientHeight || 28;
     if (w !== npSizes[i].w || h !== npSizes[i].h) {
       npSizes[i].w = w; npSizes[i].h = h;
-      npRenderers[i].setSize(w, h, false); // false = don't touch style.width/height
-      npCameras[i].aspect = w / h;
-      npCameras[i].updateProjectionMatrix();
+      npCanvases[i].width  = w;
+      npCanvases[i].height = h;
+      npGl[i].viewport(0, 0, w, h);
+      npVP[i] = mat4Multiply(
+        mat4Perspective(48, w / h, 0.1, 50),
+        mat4LookAt([3.2, 3.2, 4], [1, 0.5, 1], [0, 1, 0])
+      );
     }
   }
+}
+
+// ── WEBGL INIT ────────────────────────────────────────────────────────────────
+
+// GLSL source strings
+const VERT_SRC = `
+  attribute vec3 aPos;
+  uniform mat4 uMVP;
+  void main() { gl_Position = uMVP * vec4(aPos, 1.0); }
+`;
+const SOLID_FRAG_SRC = `
+  precision mediump float;
+  uniform vec3 uColor;
+  void main() { gl_FragColor = vec4(uColor, 1.0); }
+`;
+const LINE_FRAG_SRC = `
+  precision mediump float;
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  void main() { gl_FragColor = vec4(uColor, uAlpha); }
+`;
+
+function _compileShader(ctx, type, src) {
+  const sh = ctx.createShader(type);
+  ctx.shaderSource(sh, src);
+  ctx.compileShader(sh);
+  if (!ctx.getShaderParameter(sh, ctx.COMPILE_STATUS))
+    throw new Error('Shader compile: ' + ctx.getShaderInfoLog(sh));
+  return sh;
+}
+
+function _linkProgram(ctx, vsSrc, fsSrc) {
+  const prog = ctx.createProgram();
+  ctx.attachShader(prog, _compileShader(ctx, ctx.VERTEX_SHADER,   vsSrc));
+  ctx.attachShader(prog, _compileShader(ctx, ctx.FRAGMENT_SHADER, fsSrc));
+  ctx.linkProgram(prog);
+  if (!ctx.getProgramParameter(prog, ctx.LINK_STATUS))
+    throw new Error('Program link: ' + ctx.getProgramInfoLog(prog));
+  return prog;
+}
+
+function initWebGL() {
+  gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  if (!gl) { console.error('WebGL not supported'); return; }
+
+  // Compile shader programs
+  solidProg = _linkProgram(gl, VERT_SRC, SOLID_FRAG_SRC);
+  lineProg  = _linkProgram(gl, VERT_SRC, LINE_FRAG_SRC);
+
+  // Cache attribute / uniform locations
+  solid_aPos   = gl.getAttribLocation (solidProg, 'aPos');
+  solid_uMVP   = gl.getUniformLocation(solidProg, 'uMVP');
+  solid_uColor = gl.getUniformLocation(solidProg, 'uColor');
+
+  line_aPos    = gl.getAttribLocation (lineProg,  'aPos');
+  line_uMVP    = gl.getUniformLocation(lineProg,  'uMVP');
+  line_uColor  = gl.getUniformLocation(lineProg,  'uColor');
+  line_uAlpha  = gl.getUniformLocation(lineProg,  'uAlpha');
+
+  // Render state
+  gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.enable(gl.POLYGON_OFFSET_FILL);
+  gl.polygonOffset(1, 1);
+
+  // Clear color: #06080f
+  gl.clearColor(6 / 255, 8 / 255, 15 / 255, 1.0);
+
+  _buildStaticCubeBuffers();
+}
+
+// ── BUFFER HELPERS ────────────────────────────────────────────────────────────
+
+// Upload a flat array of XYZ positions into a new GL_ARRAY_BUFFER.
+// Returns { buf, count } — count = number of vertices (positions.length / 3).
+// Call gl.deleteBuffer(buf) when the buffer is no longer needed.
+function makeWireBuffer(positions) {
+  const data = positions instanceof Float32Array ? positions : new Float32Array(positions);
+  const buf  = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  return { buf, count: data.length / 3 };
+}
+
+// Unit-cube edge geometry — shared between main context and np preview contexts.
+// prettier-ignore
+const EDGE_CUBE_VERTS = new Float32Array([
+  // -Z ring
+  0,0,0, 1,0,0,   1,0,0, 1,1,0,   1,1,0, 0,1,0,   0,1,0, 0,0,0,
+  // +Z ring
+  0,0,1, 1,0,1,   1,0,1, 1,1,1,   1,1,1, 0,1,1,   0,1,1, 0,0,1,
+  // pillars
+  0,0,0, 0,0,1,   1,0,0, 1,0,1,   1,1,0, 1,1,1,   0,1,0, 0,1,1,
+]);
+
+// Static unit-cube buffers (created once in initWebGL, reused every frame).
+// Caller supplies a mat4Translation(wx, wy, wz) as model matrix.
+let solidCubeBuf = null, solidCubeCount = 0;
+let edgeCubeBuf  = null, edgeCubeCount  = 0;
+
+function _buildStaticCubeBuffers() {
+  // ── Solid: 6 faces × 2 triangles × 3 vertices = 36 vertices ──────────────
+  // prettier-ignore
+  const solidVerts = new Float32Array([
+    // -Z face (z=0)
+    0,0,0, 1,1,0, 1,0,0,   0,0,0, 0,1,0, 1,1,0,
+    // +Z face (z=1)
+    0,0,1, 1,0,1, 1,1,1,   0,0,1, 1,1,1, 0,1,1,
+    // -Y face (y=0)
+    0,0,0, 1,0,0, 1,0,1,   0,0,0, 1,0,1, 0,0,1,
+    // +Y face (y=1)
+    0,1,0, 1,1,1, 1,1,0,   0,1,0, 0,1,1, 1,1,1,
+    // -X face (x=0)
+    0,0,0, 0,0,1, 0,1,1,   0,0,0, 0,1,1, 0,1,0,
+    // +X face (x=1)
+    1,0,0, 1,1,0, 1,1,1,   1,0,0, 1,1,1, 1,0,1,
+  ]);
+  const sb = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, sb);
+  gl.bufferData(gl.ARRAY_BUFFER, solidVerts, gl.STATIC_DRAW);
+  solidCubeBuf   = sb;
+  solidCubeCount = 36;
+
+  // ── Edges: 12 edges × 2 vertices = 24 vertices ────────────────────────────
+  const edgeVerts = EDGE_CUBE_VERTS;
+  const eb = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, eb);
+  gl.bufferData(gl.ARRAY_BUFFER, edgeVerts, gl.STATIC_DRAW);
+  edgeCubeBuf   = eb;
+  edgeCubeCount = 24;
 }
 
 // ── GRID ──────────────────────────────────────────────────────────────────────
@@ -331,41 +592,6 @@ function g2w(gx, gy, gz) {
   return { wx: GW - 1 - gx, wy: gz, wz: gy };
 }
 
-// ── GEOMETRY HELPERS ─────────────────────────────────────────────────────────
-const _edgesGeo     = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
-const _solidGeo     = new THREE.BoxGeometry(1, 1, 1);
-const _solidEdgesGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
-
-function makeWireCube(wx, wy, wz, color, opacity) {
-  const mat = new THREE.LineBasicMaterial({
-    color,
-    transparent: opacity < 1,
-    opacity: opacity ?? 1,
-  });
-  const m = new THREE.LineSegments(_edgesGeo.clone(), mat);
-  m.position.set(wx + 0.5, wy + 0.5, wz + 0.5);
-  return m;
-}
-
-function makeSolidCube(wx, wy, wz, color) {
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(
-    _solidGeo,
-    new THREE.MeshBasicMaterial({
-      color,
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
-    })
-  ));
-  g.add(new THREE.LineSegments(
-    _solidEdgesGeo,
-    new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 })
-  ));
-  g.position.set(wx + 0.5, wy + 0.5, wz + 0.5);
-  return g;
-}
-
 // ── FIELD WIREFRAME ───────────────────────────────────────────────────────────
 // Colors for dim (controls hidden) and bright (controls visible) states.
 // WebGL does not support linewidth > 1, so we simulate "thickness" by using
@@ -375,8 +601,10 @@ const FIELD_DIM_WALL    = 0x1a3a5c;
 const FIELD_GLOW_BRIGHT = 0x55aaff;  // vivid blue when controls shown
 const FIELD_GLOW_WALL   = 0x2a6099;
 
-// Build pit wireframe geometry. Does NOT clear grpField — caller must do that.
+// Build pit wireframe into WebGL buffers (fieldBufs).
+// Frees previous buffers before creating new ones.
 function buildField(brightColor, wallColor) {
+  if (!gl) return;
   const bc = (brightColor !== undefined) ? brightColor : FIELD_DIM_BRIGHT;
   const wc = (wallColor   !== undefined) ? wallColor   : FIELD_DIM_WALL;
 
@@ -416,20 +644,17 @@ function buildField(brightColor, wallColor) {
     a(wall, GW, 0,  z,  GW, GD, z);
   }
 
-  const mkLS = (pts, color) => {
-    if (!pts.length) return;
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    grpField.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color })));
-  };
-  mkLS(bright, bc);
-  mkLS(wall,   wc);
+  // Free previous GL buffers
+  for (const { buf } of fieldBufs) gl.deleteBuffer(buf);
+  fieldBufs = [];
+
+  if (bright.length) fieldBufs.push({ ...makeWireBuffer(bright), color: hexToRgb(bc) });
+  if (wall.length)   fieldBufs.push({ ...makeWireBuffer(wall),   color: hexToRgb(wc) });
 }
 
 // Rebuild pit wireframe with bright or dim colors.
 // Bright = controls visible (simulates "thicker" lines via color + CSS filter).
 function rebuildField(bright) {
-  clearGroup(grpField);
   buildField(
     bright ? FIELD_GLOW_BRIGHT : FIELD_DIM_BRIGHT,
     bright ? FIELD_GLOW_WALL   : FIELD_DIM_WALL
@@ -439,55 +664,179 @@ function rebuildField(bright) {
     : '';
 }
 
-// ── RENDER GROUPS ─────────────────────────────────────────────────────────────
-function clearGroup(g) { while (g.children.length) g.remove(g.children[0]); }
+// Draw all field wireframe buffers using the line shader program.
+function drawField() {
+  if (!gl || !fieldBufs.length || !glVP) return;
+  gl.useProgram(lineProg);
+  gl.uniformMatrix4fv(line_uMVP, false, glVP);
+  gl.uniform1f(line_uAlpha, 1.0);
+  for (const { buf, count, color } of fieldBufs) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.enableVertexAttribArray(line_aPos);
+    gl.vertexAttribPointer(line_aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform3fv(line_uColor, color);
+    gl.drawArrays(gl.LINES, 0, count);
+  }
+  gl.disableVertexAttribArray(line_aPos);
+}
+
 
 function renderPiece() {
-  clearGroup(grpPiece);
+  pieceCells = []; pieceRgb = null;
   if (!piece) return;
+  pieceRgb = hexToRgb(piece.color);
   for (const [cx, cy, cz] of piece.cells) {
     const { wx, wy, wz } = g2w(piece.gx + cx, piece.gy + cy, piece.gz + cz);
-    grpPiece.add(
-      pieceWireframe
-        ? makeWireCube(wx, wy, wz, piece.color, 0.55)
-        : makeSolidCube(wx, wy, wz, piece.color)
-    );
+    pieceCells.push({ wx, wy, wz });
   }
 }
 
 function renderGhost() {
-  clearGroup(grpGhost);
+  ghostCells = []; ghostRgb = null;
   if (!piece) return;
   let gy = piece.gy;
   while (canPlace(piece.cells, piece.gx, gy + 1, piece.gz)) gy++;
   if (gy === piece.gy) return;
+  ghostRgb = hexToRgb(piece.color);
   for (const [cx, cy, cz] of piece.cells) {
     const { wx, wy, wz } = g2w(piece.gx + cx, gy + cy, piece.gz + cz);
-    grpGhost.add(makeWireCube(wx, wy, wz, piece.color, 0.18));
+    ghostCells.push({ wx, wy, wz });
   }
 }
 
+// Draw active piece: solid+edges in normal mode, edges-only in wireframe mode.
+function drawPiece() {
+  if (!gl || !pieceCells.length || !glVP) return;
+  if (pieceWireframe) {
+    gl.useProgram(lineProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, edgeCubeBuf);
+    gl.enableVertexAttribArray(line_aPos);
+    gl.vertexAttribPointer(line_aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform3fv(line_uColor, pieceRgb);
+    gl.uniform1f(line_uAlpha, 0.55);
+    for (const { wx, wy, wz } of pieceCells) {
+      gl.uniformMatrix4fv(line_uMVP, false, mat4Multiply(glVP, mat4Translation(wx, wy, wz)));
+      gl.drawArrays(gl.LINES, 0, edgeCubeCount);
+    }
+    gl.disableVertexAttribArray(line_aPos);
+  } else {
+    // Pass 1: solid faces
+    gl.useProgram(solidProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, solidCubeBuf);
+    gl.enableVertexAttribArray(solid_aPos);
+    gl.vertexAttribPointer(solid_aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform3fv(solid_uColor, pieceRgb);
+    for (const { wx, wy, wz } of pieceCells) {
+      gl.uniformMatrix4fv(solid_uMVP, false, mat4Multiply(glVP, mat4Translation(wx, wy, wz)));
+      gl.drawArrays(gl.TRIANGLES, 0, solidCubeCount);
+    }
+    gl.disableVertexAttribArray(solid_aPos);
+    // Pass 2: black edges
+    gl.useProgram(lineProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, edgeCubeBuf);
+    gl.enableVertexAttribArray(line_aPos);
+    gl.vertexAttribPointer(line_aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform3fv(line_uColor, [0, 0, 0]);
+    gl.uniform1f(line_uAlpha, 0.5);
+    for (const { wx, wy, wz } of pieceCells) {
+      gl.uniformMatrix4fv(line_uMVP, false, mat4Multiply(glVP, mat4Translation(wx, wy, wz)));
+      gl.drawArrays(gl.LINES, 0, edgeCubeCount);
+    }
+    gl.disableVertexAttribArray(line_aPos);
+  }
+}
+
+// Draw ghost piece: transparent edge-only outline.
+function drawGhost() {
+  if (!gl || !ghostCells.length || !glVP) return;
+  gl.useProgram(lineProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, edgeCubeBuf);
+  gl.enableVertexAttribArray(line_aPos);
+  gl.vertexAttribPointer(line_aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.uniform3fv(line_uColor, ghostRgb);
+  gl.uniform1f(line_uAlpha, 0.18);
+  for (const { wx, wy, wz } of ghostCells) {
+    gl.uniformMatrix4fv(line_uMVP, false, mat4Multiply(glVP, mat4Translation(wx, wy, wz)));
+    gl.drawArrays(gl.LINES, 0, edgeCubeCount);
+  }
+  gl.disableVertexAttribArray(line_aPos);
+}
+
 function renderPlaced() {
-  clearGroup(grpPlaced);
+  placedCells = [];
   for (let y = 0; y < GH; y++) {
-    const color = LAYER_COLORS[y];
+    const rgb = LAYER_COLORS_RGB[y];
     for (let x = 0; x < GW; x++)
       for (let z = 0; z < GD; z++)
         if (grid[y][x][z]) {
           const { wx, wy, wz } = g2w(x, y, z);
-          grpPlaced.add(makeSolidCube(wx, wy, wz, color));
+          placedCells.push({ wx, wy, wz, rgb });
         }
   }
   updateLayerStrips();
 }
 
+// Draw all placed blocks: solid faces (pass 1) then black edges (pass 2).
+function drawPlaced() {
+  if (!gl || !placedCells.length || !glVP) return;
+
+  // Pass 1 — solid faces (polygon offset active globally, prevents z-fighting)
+  gl.useProgram(solidProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, solidCubeBuf);
+  gl.enableVertexAttribArray(solid_aPos);
+  gl.vertexAttribPointer(solid_aPos, 3, gl.FLOAT, false, 0, 0);
+  for (const { wx, wy, wz, rgb } of placedCells) {
+    gl.uniformMatrix4fv(solid_uMVP, false, mat4Multiply(glVP, mat4Translation(wx, wy, wz)));
+    gl.uniform3fv(solid_uColor, rgb);
+    gl.drawArrays(gl.TRIANGLES, 0, solidCubeCount);
+  }
+  gl.disableVertexAttribArray(solid_aPos);
+
+  // Pass 2 — black edge lines (alpha 0.5)
+  gl.useProgram(lineProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, edgeCubeBuf);
+  gl.enableVertexAttribArray(line_aPos);
+  gl.vertexAttribPointer(line_aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.uniform3fv(line_uColor, [0, 0, 0]);
+  gl.uniform1f(line_uAlpha, 0.5);
+  for (const { wx, wy, wz } of placedCells) {
+    gl.uniformMatrix4fv(line_uMVP, false, mat4Multiply(glVP, mat4Translation(wx, wy, wz)));
+    gl.drawArrays(gl.LINES, 0, edgeCubeCount);
+  }
+  gl.disableVertexAttribArray(line_aPos);
+}
+
 function renderNextPreviews() {
   for (let i = 0; i < 3; i++) {
-    clearGroup(npScenes[i]);
+    npQueues[i] = []; npRgbs[i] = null;
     if (i >= queue.length) continue;
     const { defIdx, color } = queue[i];
+    npRgbs[i] = hexToRgb(color);
     for (const [cx, cy, cz] of PIECE_DEFS[defIdx])
-      npScenes[i].add(makeWireCube(cx, cy, cz, color, 1));
+      npQueues[i].push({ wx: cx, wy: cy, wz: cz });
+  }
+}
+
+// Render all 3 next-piece preview canvases into their own WebGL contexts.
+function drawNextPreviews() {
+  for (let i = 0; i < 3; i++) {
+    const ctx = npGl[i];
+    const vp  = npVP[i];
+    ctx.clear(ctx.COLOR_BUFFER_BIT | ctx.DEPTH_BUFFER_BIT);
+    if (!npQueues[i].length || !vp) continue;
+    const { buf, count } = npEdgeBuf[i];
+    const loc = npLoc[i];
+    ctx.useProgram(npProg[i]);
+    ctx.bindBuffer(ctx.ARRAY_BUFFER, buf);
+    ctx.enableVertexAttribArray(loc.aPos);
+    ctx.vertexAttribPointer(loc.aPos, 3, ctx.FLOAT, false, 0, 0);
+    ctx.uniform3fv(loc.uColor, npRgbs[i]);
+    ctx.uniform1f(loc.uAlpha, 1.0);
+    for (const { wx, wy, wz } of npQueues[i]) {
+      ctx.uniformMatrix4fv(loc.uMVP, false, mat4Multiply(vp, mat4Translation(wx, wy, wz)));
+      ctx.drawArrays(ctx.LINES, 0, count);
+    }
+    ctx.disableVertexAttribArray(loc.aPos);
   }
 }
 
@@ -659,7 +1008,7 @@ function skipPiece() {
 function triggerGameOver() {
   running = false; paused = false;
   piece = null;
-  clearGroup(grpPiece); clearGroup(grpGhost);
+  pieceCells = []; pieceRgb = null; ghostCells = []; ghostRgb = null;
   document.getElementById('pause-overlay').classList.add('hidden');
   window.ui?.setPaused(false);
   document.getElementById('ov-title').textContent = 'GAME OVER';
@@ -684,7 +1033,7 @@ function startGame() {
   updateLayerStrips();
   window.ui?.setGridButtonActive(false);
   window.ui?.setPaused(false);
-  clearGroup(grpPiece); clearGroup(grpGhost); clearGroup(grpPlaced);
+  pieceCells = []; pieceRgb = null; ghostCells = []; ghostRgb = null; placedCells = [];
   for (let i = 0; i < 4; i++) {
     queue.push({
       defIdx: Math.floor(Math.random() * PIECE_DEFS.length),
@@ -714,12 +1063,16 @@ function loop(t) {
   }
   lastT = t;
 
-  renderer.render(scene, camera);
+  if (!gl) return;
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  // Render 3 next-piece preview canvases (size managed by updateNpSizes, not here)
-  for (let i = 0; i < 3; i++) {
-    npRenderers[i].render(npScenes[i], npCameras[i]);
-  }
+  // Raw WebGL: all geometry
+  drawField();
+  drawPlaced();
+  drawGhost();
+  drawPiece();
+
+  drawNextPreviews();
 }
 
 // ── RESIZE ────────────────────────────────────────────────────────────────────
@@ -731,14 +1084,19 @@ function resize() {
   const s  = Math.max(Math.min(cw, ch), 120); // square, min 120px
 
   const pr = window.devicePixelRatio || 1;
-  renderer.setSize(Math.round(s * pr), Math.round(s * pr));
+  canvas.width  = Math.round(s * pr);
+  canvas.height = Math.round(s * pr);
   canvas.style.width  = s + 'px';
   canvas.style.height = s + 'px';
-  camera.aspect = 1;
-  camera.fov = 42;
-  camera.position.set(GW / 2, GD / 2, -8);
-  camera.lookAt(GW / 2, GD / 2, 0);
-  camera.updateProjectionMatrix();
+
+  if (gl) {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    glVP = mat4Multiply(
+      mat4Perspective(42, 1, 0.1, 300),
+      mat4LookAt([GW / 2, GD / 2, -8], [GW / 2, GD / 2, 0], [0, 1, 0])
+    );
+  }
+
   rebuildField(controlsVisible);
   updateNpSizes();
 }
@@ -890,6 +1248,8 @@ window.addEventListener('resize', resize);
 
 // Defer first resize until CSS layout is fully applied (external stylesheet loaded)
 window.addEventListener('load', () => {
+  initWebGL();
+  initNpWebGL();
   resize();
   requestAnimationFrame(loop);
 });
