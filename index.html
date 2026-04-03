@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Blockout 3D</title>
+<style>
+/* Base reset + dark theme */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #06080f;
+  color: #ccd6ff;
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+  height: 100dvh;
+}
+
+/* ── Start / Game-Over overlay ── */
+#overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+#overlay.hidden { display: none; }
+.overlay-box {
+  text-align: center;
+  border: 1px solid #223355;
+  padding: 36px 44px;
+  background: rgba(4,10,28,0.96);
+  max-width: 340px;
+  width: 90vw;
+}
+.overlay-box h1 {
+  font-size: 28px;
+  color: #5599ff;
+  letter-spacing: 4px;
+  margin-bottom: 8px;
+}
+.overlay-box .subtitle { color: #778; font-size: 13px; margin-bottom: 4px; }
+.overlay-score { font-size: 32px; color: #fff; margin: 18px 0; }
+.controls-help {
+  color: #556;
+  font-size: 11px;
+  line-height: 2;
+  margin: 16px 0;
+  border-top: 1px solid #1a2540;
+  padding-top: 14px;
+}
+.controls-help span { color: #7799cc; }
+.btn {
+  background: #112240;
+  border: 1px solid #4477bb;
+  color: #aaccff;
+  padding: 11px 28px;
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 3px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.15s;
+  touch-action: manipulation;
+}
+.btn:hover { background: #1a3360; }
+.btn:active { background: #224488; }
+</style>
+<link rel="stylesheet" href="ui/styles.css">
+</head>
+<body>
+
+<!-- Start / Game-Over overlay (always on top, z-index 200) -->
+<div id="overlay">
+  <div class="overlay-box">
+    <h1 id="ov-title">BLOCKOUT 3D</h1>
+    <p class="subtitle" id="ov-sub">3D falling-block puzzle</p>
+    <div class="overlay-score" id="ov-score" style="display:none"></div>
+    <div class="controls-help" id="ov-help">
+      <span>← →</span> Move X &nbsp; <span>↑ ↓</span> Move Z<br>
+      <span>R</span> Soft Drop &nbsp; <span>Space</span> Hard Drop<br>
+      <span>A / D</span> Rotate Y &nbsp; <span>W / S</span> Rotate X<br>
+      <span>Q / E</span> Rotate Z &nbsp; <span>P / Esc</span> Pause<br>
+      <span>Tab</span> Controls toggle
+    </div>
+    <button class="btn" id="startBtn" onclick="startGame()">PLAY</button>
+  </div>
+</div>
+
+<!-- ── App layout ── -->
+<div id="app">
+
+  <!-- 1. HUD bar (44–52px, never scrolls) -->
+  <header id="hud">
+    <span id="hud-score">&#11088; 0</span>
+
+    <!-- Next-piece previews (Three.js renders directly into these canvases) -->
+    <div id="next-pieces">
+      <canvas id="np0" class="next-preview"></canvas>
+      <canvas id="np1" class="next-preview"></canvas>
+      <canvas id="np2" class="next-preview"></canvas>
+    </div>
+
+    <span id="hud-level-lines">L1 | 0</span>
+
+    <!-- Falltime stepper -->
+    <div id="falltime-stepper">
+      <button class="stepper-btn" id="ft-minus" aria-label="Decrease">&#8722;</button>
+      <input type="number" id="ft-value" value="10" min="0.5" max="30" step="0.5" aria-label="Fall time (s)">
+      <span class="stepper-unit">s</span>
+      <button class="stepper-btn" id="ft-plus" aria-label="Increase">+</button>
+    </div>
+
+    <button id="btn-tutorial" class="hud-btn" aria-label="Tutorial">?</button>
+    <button id="btn-pause"    class="hud-btn" aria-label="Pause">&#9208;</button>
+  </header>
+
+  <!-- 2. Middle row: layer indicator | game canvas | axis diagram -->
+  <div id="middle-row">
+    <div id="layer-indicator"></div>
+
+    <div id="game-canvas-container">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="axis-diagram" aria-label="Axis reference">
+      <svg viewBox="0 0 72 96" width="60" height="80">
+        <!-- Y axis (green, up) -->
+        <line x1="36" y1="68" x2="36" y2="14" stroke="#44FF44" stroke-width="2"/>
+        <polygon points="36,6 32,16 40,16" fill="#44FF44"/>
+        <text x="40" y="13" fill="#44FF44" font-family="monospace" font-size="9">Y</text>
+        <!-- X axis (red, right) -->
+        <line x1="36" y1="68" x2="68" y2="68" stroke="#FF4444" stroke-width="2"/>
+        <polygon points="76,68 66,64 66,72" fill="#FF4444"/>
+        <text x="64" y="82" fill="#FF4444" font-family="monospace" font-size="9">X</text>
+        <!-- Z axis (blue, diagonal) -->
+        <line x1="36" y1="68" x2="10" y2="88" stroke="#4488FF" stroke-width="2"/>
+        <polygon points="4,93 12,82 19,90" fill="#4488FF"/>
+        <text x="0" y="96" fill="#4488FF" font-family="monospace" font-size="8">Z</text>
+        <!-- Origin -->
+        <circle cx="36" cy="68" r="3" fill="#ccd6ff"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 3. Controls (toggle shows/hides; visible by default on mobile) -->
+  <div id="controls-wrap" style="display:none">
+    <button id="controls-toggle" aria-label="Toggle controls">&#128065; Controls</button>
+    <div id="controls">
+      <div id="game-controls-inner">
+        <!-- Rotation buttons injected by controls.js -->
+        <div id="rotation-buttons"></div>
+        <!-- D-pad injected by controls.js -->
+        <div id="dpad-area">
+          <div id="dpad"></div>
+        </div>
+      </div>
+      <button id="btn-hard-drop">&#11015;&#11015; DROP</button>
+      <!-- Special buttons (UNDO SKIP GRID) injected by controls.js -->
+      <div id="special-buttons"></div>
+    </div>
+  </div>
+
+  <!-- Pause overlay (within #app, z-index 100) -->
+  <div id="pause-overlay" class="hidden">
+    <div class="pause-content">
+      <div class="pause-text">PAUSED</div>
+      <button class="btn" style="margin-top:20px" onclick="togglePause()">RESUME</button>
+    </div>
+  </div>
+
+  <!-- Tutorial overlay (fixed, z-index 300; content injected by tutorial.js) -->
+  <div id="tutorial-overlay" class="hidden"></div>
+
+  <!-- Toast messages -->
+  <div id="msg-toast" class="hidden"></div>
+
+  <!-- Safari iOS bottom spacer -->
+  <div class="safari-bottom-spacer"></div>
+</div>
+
+<!-- Three.js r128 (CDN — do not change) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const GW = 5, GD = 5, GH = 20;
+
+const PIECE_DEFS = [
+  [[0,0,0]],
+  [[0,0,0],[1,0,0]],
+  [[0,0,0],[0,0,1]],
+  [[0,0,0],[0,1,0]],
+  [[0,0,0],[1,0,0],[2,0,0]],
+  [[0,0,0],[0,0,1],[0,0,2]],
+  [[0,0,0],[0,1,0],[0,2,0]],
+  [[0,0,0],[1,0,0],[2,0,0],[3,0,0]],
+  [[0,0,0],[1,0,0],[2,0,0],[0,0,1]],
+  [[0,0,0],[1,0,0],[2,0,0],[2,0,1]],
+  [[0,0,0],[1,0,0],[2,0,0],[1,0,1]],
+  [[0,0,0],[1,0,0],[1,0,1],[2,0,1]],
+  [[1,0,0],[2,0,0],[0,0,1],[1,0,1]],
+  [[0,0,0],[1,0,0],[0,0,1],[1,0,1]],
+  [[0,0,0],[1,0,0],[0,1,0],[1,1,0]],
+  [[0,0,0],[1,0,0],[0,0,1],[0,1,0]],
+  [[0,0,0],[1,0,0],[1,0,1],[1,1,1]],
+  [[0,0,0],[0,0,1],[0,0,2],[1,0,0]],
+];
+
+const COLORS = [
+  0x00eeff, 0xff3355, 0x33ff88, 0x4488ff,
+  0xffee00, 0xff44ff, 0xff8833, 0x00ffcc,
+  0xff6688, 0x88ffaa, 0xaa66ff, 0xffbb33,
+  0x33ccff, 0xff44aa,
+];
+
+// Golden-angle hue per layer so adjacent layers never share similar hue
+const LAYER_COLORS = Array.from({ length: GH }, (_, i) => {
+  const c = new THREE.Color();
+  c.setHSL((i * 0.618033988749895) % 1, 0.88, 0.54);
+  return c.getHex();
+});
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let grid = [], gridColor = [];
+let piece = null;
+let queue = [];
+let score = 0, level = 1, lines = 0;
+let running = false, paused = false, pieceWireframe = false;
+let lastLockedPiece = null, lastLockedCells = null, canUndo = false;
+let baseDropInterval = 10000;        // ms — overridden by falltime stepper (default 10 s)
+let dropTimer = 0, dropInterval = 10000, lastT = 0;
+let controlsVisible = window.innerWidth < 1025; // bright lines on mobile from the start
+let inputPaused = false;             // temporary pause while falltime input is focused
+
+// ── THREE.JS ─────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setClearColor(0x06080f);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
+
+const grpField  = new THREE.Group();
+const grpPiece  = new THREE.Group();
+const grpGhost  = new THREE.Group();
+const grpPlaced = new THREE.Group();
+scene.add(grpField, grpPlaced, grpGhost, grpPiece);
+
+// ── NEXT-PIECE PREVIEW RENDERERS ──────────────────────────────────────────────
+const npRenderers = [], npScenes = [], npCameras = [];
+for (let i = 0; i < 3; i++) {
+  const c = document.getElementById('np' + i);
+  const r = new THREE.WebGLRenderer({ canvas: c, antialias: true, alpha: true });
+  r.setClearColor(0x000000, 0);
+  const s = new THREE.Scene();
+  const k = new THREE.PerspectiveCamera(48, 1, 0.1, 50);
+  k.position.set(3.2, 3.2, 4);
+  k.lookAt(1, 0.5, 1);
+  npRenderers.push(r); npScenes.push(s); npCameras.push(k);
+}
+
+// Cache canvas elements and last-known sizes to avoid setSize every frame
+const npCanvases = [0, 1, 2].map(i => document.getElementById('np' + i));
+const npSizes    = npCanvases.map(() => ({ w: 0, h: 0 }));
+
+// Call setSize only when the measured CSS size actually changed.
+// Pass `false` so Three.js never overwrites canvas.style.width/height
+// (which would trigger layout-reflows and cause flicker every frame).
+function updateNpSizes() {
+  for (let i = 0; i < 3; i++) {
+    const w = npCanvases[i].clientWidth  || 28;
+    const h = npCanvases[i].clientHeight || 28;
+    if (w !== npSizes[i].w || h !== npSizes[i].h) {
+      npSizes[i].w = w; npSizes[i].h = h;
+      npRenderers[i].setSize(w, h, false); // false = don't touch style.width/height
+      npCameras[i].aspect = w / h;
+      npCameras[i].updateProjectionMatrix();
+    }
+  }
+}
+
+// ── GRID ──────────────────────────────────────────────────────────────────────
+function initGrid() {
+  grid = []; gridColor = [];
+  for (let y = 0; y < GH; y++) {
+    grid[y] = []; gridColor[y] = [];
+    for (let x = 0; x < GW; x++) {
+      grid[y][x]      = new Uint8Array(GD);
+      gridColor[y][x] = new Uint32Array(GD);
+    }
+  }
+}
+
+function cellFree(x, y, z) {
+  if (x < 0 || x >= GW || z < 0 || z >= GD) return false;
+  if (y >= GH) return false;
+  if (y < 0) return true;
+  return grid[y][x][z] === 0;
+}
+
+// ── PIECE ─────────────────────────────────────────────────────────────────────
+function newPiece(defIdx, color) {
+  const cells = PIECE_DEFS[defIdx].map(c => [...c]);
+  return { cells, color, defIdx, gx: 0, gy: 0, gz: 0 };
+}
+
+function canPlace(cells, gx, gy, gz) {
+  for (const [cx, cy, cz] of cells)
+    if (!cellFree(gx + cx, gy + cy, gz + cz)) return false;
+  return true;
+}
+
+function rotateCells(cells, axis, dir) {
+  const rotated = cells.map(([cx, cy, cz]) => {
+    if (axis === 'x') return dir === 1 ? [cx, -cz, cy]  : [cx, cz, -cy];
+    if (axis === 'y') return dir === 1 ? [cz, cy, -cx]  : [-cz, cy, cx];
+    /* z */           return dir === 1 ? [-cy, cx, cz]  : [cy, -cx, cz];
+  });
+  let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+  for (const [x, y, z] of rotated) { mnX = Math.min(mnX, x); mnY = Math.min(mnY, y); mnZ = Math.min(mnZ, z); }
+  return rotated.map(([x, y, z]) => [x - mnX, y - mnY, z - mnZ]);
+}
+
+// ── COORDINATE MAPPING ────────────────────────────────────────────────────────
+// World axes:  X = gx (flipped),  Y = gz,  Z = gy (depth into pit)
+// Camera looks from -Z toward +Z, positioned at (GW/2, GD/2, -8).
+function g2w(gx, gy, gz) {
+  return { wx: GW - 1 - gx, wy: gz, wz: gy };
+}
+
+// ── GEOMETRY HELPERS ─────────────────────────────────────────────────────────
+const _edgesGeo     = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+const _solidGeo     = new THREE.BoxGeometry(1, 1, 1);
+const _solidEdgesGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+
+function makeWireCube(wx, wy, wz, color, opacity) {
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: opacity < 1,
+    opacity: opacity ?? 1,
+  });
+  const m = new THREE.LineSegments(_edgesGeo.clone(), mat);
+  m.position.set(wx + 0.5, wy + 0.5, wz + 0.5);
+  return m;
+}
+
+function makeSolidCube(wx, wy, wz, color) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(
+    _solidGeo,
+    new THREE.MeshBasicMaterial({
+      color,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    })
+  ));
+  g.add(new THREE.LineSegments(
+    _solidEdgesGeo,
+    new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 })
+  ));
+  g.position.set(wx + 0.5, wy + 0.5, wz + 0.5);
+  return g;
+}
+
+// ── FIELD WIREFRAME ───────────────────────────────────────────────────────────
+// Colors for dim (controls hidden) and bright (controls visible) states.
+// WebGL does not support linewidth > 1, so we simulate "thickness" by using
+// significantly brighter colors + a CSS brightness filter on the canvas.
+const FIELD_DIM_BRIGHT  = 0x2255aa;
+const FIELD_DIM_WALL    = 0x1a3a5c;
+const FIELD_GLOW_BRIGHT = 0x55aaff;  // vivid blue when controls shown
+const FIELD_GLOW_WALL   = 0x2a6099;
+
+// Build pit wireframe geometry. Does NOT clear grpField — caller must do that.
+function buildField(brightColor, wallColor) {
+  const bc = (brightColor !== undefined) ? brightColor : FIELD_DIM_BRIGHT;
+  const wc = (wallColor   !== undefined) ? wallColor   : FIELD_DIM_WALL;
+
+  const bright = [], wall = [];
+  const a = (arr, x1,y1,z1, x2,y2,z2) => arr.push(x1,y1,z1, x2,y2,z2);
+
+  // Opening frame (Z=0)
+  a(bright, 0,0,0,  GW,0,0);
+  a(bright, 0,GD,0, GW,GD,0);
+  a(bright, 0,0,0,  0,GD,0);
+  a(bright, GW,0,0, GW,GD,0);
+
+  // 4 corner tunnel lines
+  a(bright, 0,0,0,   0,0,GH);
+  a(bright, GW,0,0,  GW,0,GH);
+  a(bright, 0,GD,0,  0,GD,GH);
+  a(bright, GW,GD,0, GW,GD,GH);
+
+  // Floor grid (Z=GH)
+  for (let x = 0; x <= GW; x++) a(bright, x,0,GH, x,GD,GH);
+  for (let y = 0; y <= GD; y++) a(bright, 0,y,GH, GW,y,GH);
+
+  // Wall grid lines (depth columns)
+  for (let x = 1; x < GW; x++) {
+    a(wall, x, 0,  0,  x, 0,  GH);
+    a(wall, x, GD, 0,  x, GD, GH);
+  }
+  for (let y = 1; y < GD; y++) {
+    a(wall, 0,  y, 0,  0,  y, GH);
+    a(wall, GW, y, 0,  GW, y, GH);
+  }
+  // Wall grid lines (horizontal slices)
+  for (let z = 1; z < GH; z++) {
+    a(wall, 0,  0,  z,  GW, 0,  z);
+    a(wall, 0,  GD, z,  GW, GD, z);
+    a(wall, 0,  0,  z,  0,  GD, z);
+    a(wall, GW, 0,  z,  GW, GD, z);
+  }
+
+  const mkLS = (pts, color) => {
+    if (!pts.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    grpField.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color })));
+  };
+  mkLS(bright, bc);
+  mkLS(wall,   wc);
+}
+
+// Rebuild pit wireframe with bright or dim colors.
+// Bright = controls visible (simulates "thicker" lines via color + CSS filter).
+function rebuildField(bright) {
+  clearGroup(grpField);
+  buildField(
+    bright ? FIELD_GLOW_BRIGHT : FIELD_DIM_BRIGHT,
+    bright ? FIELD_GLOW_WALL   : FIELD_DIM_WALL
+  );
+  canvas.style.filter = bright
+    ? 'brightness(1.18) contrast(1.12)'
+    : '';
+}
+
+// ── RENDER GROUPS ─────────────────────────────────────────────────────────────
+function clearGroup(g) { while (g.children.length) g.remove(g.children[0]); }
+
+function renderPiece() {
+  clearGroup(grpPiece);
+  if (!piece) return;
+  for (const [cx, cy, cz] of piece.cells) {
+    const { wx, wy, wz } = g2w(piece.gx + cx, piece.gy + cy, piece.gz + cz);
+    grpPiece.add(
+      pieceWireframe
+        ? makeWireCube(wx, wy, wz, piece.color, 0.55)
+        : makeSolidCube(wx, wy, wz, piece.color)
+    );
+  }
+}
+
+function renderGhost() {
+  clearGroup(grpGhost);
+  if (!piece) return;
+  let gy = piece.gy;
+  while (canPlace(piece.cells, piece.gx, gy + 1, piece.gz)) gy++;
+  if (gy === piece.gy) return;
+  for (const [cx, cy, cz] of piece.cells) {
+    const { wx, wy, wz } = g2w(piece.gx + cx, gy + cy, piece.gz + cz);
+    grpGhost.add(makeWireCube(wx, wy, wz, piece.color, 0.18));
+  }
+}
+
+function renderPlaced() {
+  clearGroup(grpPlaced);
+  for (let y = 0; y < GH; y++) {
+    const color = LAYER_COLORS[y];
+    for (let x = 0; x < GW; x++)
+      for (let z = 0; z < GD; z++)
+        if (grid[y][x][z]) {
+          const { wx, wy, wz } = g2w(x, y, z);
+          grpPlaced.add(makeSolidCube(wx, wy, wz, color));
+        }
+  }
+  updateLayerStrips();
+}
+
+function renderNextPreviews() {
+  for (let i = 0; i < 3; i++) {
+    clearGroup(npScenes[i]);
+    if (i >= queue.length) continue;
+    const { defIdx, color } = queue[i];
+    for (const [cx, cy, cz] of PIECE_DEFS[defIdx])
+      npScenes[i].add(makeWireCube(cx, cy, cz, color, 1));
+  }
+}
+
+// ── GAMEPLAY ──────────────────────────────────────────────────────────────────
+function spawnPiece() {
+  while (queue.length < 4) {
+    queue.push({
+      defIdx: Math.floor(Math.random() * PIECE_DEFS.length),
+      color:  COLORS[Math.floor(Math.random() * COLORS.length)],
+    });
+  }
+  const { defIdx, color } = queue.shift();
+  piece = newPiece(defIdx, color);
+  if (!canPlace(piece.cells, piece.gx, piece.gy, piece.gz)) {
+    triggerGameOver(); return;
+  }
+  renderNextPreviews();
+  renderPiece();
+  renderGhost();
+}
+
+function movePiece(dx, dy, dz) {
+  if (!piece || !running || paused || inputPaused) return false;
+  const nx = piece.gx + dx, ny = piece.gy + dy, nz = piece.gz + dz;
+  if (canPlace(piece.cells, nx, ny, nz)) {
+    piece.gx = nx; piece.gy = ny; piece.gz = nz;
+    renderPiece(); renderGhost();
+    return true;
+  }
+  return false;
+}
+
+function softDrop() {
+  if (!running || paused || inputPaused) return;
+  if (!movePiece(0, 1, 0)) lockPiece();
+}
+
+function hardDrop() {
+  if (!piece || !running || paused || inputPaused) return;
+  while (movePiece(0, 1, 0)) {}
+  lockPiece();
+}
+
+function rotatePiece(axis, dir) {
+  if (!piece || !running || paused || inputPaused) return;
+  const nc = rotateCells(piece.cells, axis, dir);
+  const kicks = [[0,0,0],[-1,0,0],[1,0,0],[0,0,-1],[0,0,1],[0,-1,0],[1,0,1],[-1,0,-1]];
+  for (const [kx, ky, kz] of kicks) {
+    if (canPlace(nc, piece.gx + kx, piece.gy + ky, piece.gz + kz)) {
+      piece.cells = nc;
+      piece.gx += kx; piece.gy += ky; piece.gz += kz;
+      renderPiece(); renderGhost();
+      return;
+    }
+  }
+}
+
+function lockPiece() {
+  if (!piece) return;
+  lastLockedPiece = { defIdx: piece.defIdx, color: piece.color };
+  lastLockedCells = piece.cells.map(([cx, cy, cz]) => [piece.gx+cx, piece.gy+cy, piece.gz+cz]);
+  const linesBefore = lines;
+  for (const [cx, cy, cz] of piece.cells) {
+    const gx = piece.gx + cx, gy = piece.gy + cy, gz = piece.gz + cz;
+    if (gy >= 0 && gy < GH) {
+      grid[gy][gx][gz] = 1;
+      gridColor[gy][gx][gz] = piece.color;
+    }
+  }
+  score += 100 * piece.cells.length;
+  updateUI();
+  piece = null;
+  clearLayers();
+  canUndo = (lines === linesBefore);
+  renderPlaced();
+  spawnPiece();
+}
+
+function clearLayers() {
+  let cleared = 0;
+  for (let y = 0; y < GH; y++) {
+    let full = true;
+    outer: for (let x = 0; x < GW; x++)
+      for (let z = 0; z < GD; z++)
+        if (!grid[y][x][z]) { full = false; break outer; }
+    if (full) {
+      for (let gy = y; gy > 0; gy--)
+        for (let x = 0; x < GW; x++)
+          for (let z = 0; z < GD; z++) {
+            grid[gy][x][z]      = grid[gy-1][x][z];
+            gridColor[gy][x][z] = gridColor[gy-1][x][z];
+          }
+      for (let x = 0; x < GW; x++)
+        for (let z = 0; z < GD; z++) { grid[0][x][z] = 0; gridColor[0][x][z] = 0; }
+      y--; cleared++;
+    }
+  }
+  if (cleared) {
+    lines += cleared;
+    score += 5000 * cleared;
+    level = Math.floor(lines / 5) + 1;
+    playLayerClearSound();
+    dropInterval = Math.max(
+      Math.round(baseDropInterval * 0.1),
+      Math.round(baseDropInterval * (1 - (level - 1) * 0.075))
+    );
+    updateUI();
+  }
+}
+
+// ── UI BRIDGES ────────────────────────────────────────────────────────────────
+function updateUI() {
+  window.ui?.updateScore(score);
+  window.ui?.updateLevel(level);
+  window.ui?.updateLines(lines);
+}
+
+function updateLayerStrips() {
+  const layerFill = [];
+  const layerColorHex = [];
+  for (let y = 0; y < GH; y++) {
+    let count = 0;
+    for (let x = 0; x < GW; x++)
+      for (let z = 0; z < GD; z++)
+        if (grid[y][x][z]) count++;
+    layerFill.push(count);
+    layerColorHex.push('#' + LAYER_COLORS[y].toString(16).padStart(6, '0'));
+  }
+  const currentLayer = piece ? piece.gy : -1;
+  window.ui?.updateLayerIndicator(layerFill, currentLayer, layerColorHex);
+}
+
+function togglePause() {
+  if (!running) return;
+  paused = !paused;
+  document.getElementById('pause-overlay').classList.toggle('hidden', !paused);
+  window.ui?.setPaused(paused);
+  if (!paused) lastT = performance.now();
+}
+
+function toggleWireframe() {
+  pieceWireframe = !pieceWireframe;
+  renderPiece();
+  window.ui?.setGridButtonActive(pieceWireframe);
+}
+
+function undoLastPiece() {
+  if (!canUndo || !running || paused) return;
+  for (const [gx, gy, gz] of lastLockedCells)
+    if (gy >= 0 && gy < GH) grid[gy][gx][gz] = 0;
+  score -= 100 * lastLockedCells.length;
+  if (piece) queue.unshift({ defIdx: piece.defIdx, color: piece.color });
+  piece = newPiece(lastLockedPiece.defIdx, lastLockedPiece.color);
+  canUndo = false; lastLockedPiece = null; lastLockedCells = null;
+  updateUI();
+  renderPlaced();
+  renderPiece();
+  renderGhost();
+  renderNextPreviews();
+}
+
+function skipPiece() {
+  if (!piece || !running || paused) return;
+  canUndo = false;
+  piece = null;
+  spawnPiece();
+}
+
+function triggerGameOver() {
+  running = false; paused = false;
+  piece = null;
+  clearGroup(grpPiece); clearGroup(grpGhost);
+  document.getElementById('pause-overlay').classList.add('hidden');
+  window.ui?.setPaused(false);
+  document.getElementById('ov-title').textContent = 'GAME OVER';
+  document.getElementById('ov-sub').textContent = 'Your Score:';
+  const sc = document.getElementById('ov-score');
+  sc.style.display = 'block';
+  sc.textContent = score.toLocaleString();
+  document.getElementById('ov-help').style.display = 'none';
+  document.getElementById('startBtn').textContent = 'PLAY AGAIN';
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('controls-wrap').style.display = 'none';
+}
+
+function startGame() {
+  initGrid();
+  queue = [];
+  score = 0; level = 1; lines = 0;
+  dropTimer = 0; dropInterval = baseDropInterval;
+  piece = null; paused = false; inputPaused = false; pieceWireframe = false;
+  canUndo = false; lastLockedPiece = null; lastLockedCells = null;
+  updateUI();
+  updateLayerStrips();
+  window.ui?.setGridButtonActive(false);
+  window.ui?.setPaused(false);
+  clearGroup(grpPiece); clearGroup(grpGhost); clearGroup(grpPlaced);
+  for (let i = 0; i < 4; i++) {
+    queue.push({
+      defIdx: Math.floor(Math.random() * PIECE_DEFS.length),
+      color:  COLORS[Math.floor(Math.random() * COLORS.length)],
+    });
+  }
+  running = true;
+  lastT = performance.now();
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('ov-help').style.display = '';
+  document.getElementById('controls-wrap').style.display = '';
+  resize();
+  spawnPiece();
+}
+
+// ── GAME LOOP ─────────────────────────────────────────────────────────────────
+function loop(t) {
+  requestAnimationFrame(loop);
+
+  if (running && !paused && !inputPaused && lastT > 0) {
+    const dt = Math.min(t - lastT, 120);
+    dropTimer += dt;
+    if (dropTimer >= dropInterval) {
+      dropTimer -= dropInterval;
+      softDrop();
+    }
+  }
+  lastT = t;
+
+  renderer.render(scene, camera);
+
+  // Render 3 next-piece preview canvases (size managed by updateNpSizes, not here)
+  for (let i = 0; i < 3; i++) {
+    npRenderers[i].render(npScenes[i], npCameras[i]);
+  }
+}
+
+// ── RESIZE ────────────────────────────────────────────────────────────────────
+function resize() {
+  const container = document.getElementById('game-canvas-container');
+  if (!container) return;
+  const cw = container.clientWidth  || 300;
+  const ch = container.clientHeight || 300;
+  const s  = Math.max(Math.min(cw, ch), 120); // square, min 120px
+
+  const pr = window.devicePixelRatio || 1;
+  renderer.setSize(Math.round(s * pr), Math.round(s * pr));
+  canvas.style.width  = s + 'px';
+  canvas.style.height = s + 'px';
+  camera.aspect = 1;
+  camera.fov = 42;
+  camera.position.set(GW / 2, GD / 2, -8);
+  camera.lookAt(GW / 2, GD / 2, 0);
+  camera.updateProjectionMatrix();
+  rebuildField(controlsVisible);
+  updateNpSizes();
+}
+
+// ── KEYBOARD ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { togglePause(); return; }
+  if (e.key === 't' || e.key === 'T' || e.key === 'g' || e.key === 'G') { toggleWireframe(); return; }
+  if (e.key === 'u' || e.key === 'U') { undoLastPiece(); return; }
+  if (e.key === 'n' || e.key === 'N') { skipPiece(); return; }
+  if (!running || paused) return;
+  switch (e.key) {
+    case 'ArrowLeft':  e.preventDefault(); movePiece(-1, 0,  0); break;
+    case 'ArrowRight': e.preventDefault(); movePiece( 1, 0,  0); break;
+    case 'ArrowUp':    e.preventDefault(); movePiece( 0, 0,  1); break;
+    case 'ArrowDown':  e.preventDefault(); movePiece( 0, 0, -1); break;
+    case 'r': case 'R': softDrop(); break;
+    case ' ':           e.preventDefault(); hardDrop(); break;
+    case 'a': case 'A': rotatePiece('y',  1); break;
+    case 'd': case 'D': rotatePiece('y', -1); break;
+    case 'w': case 'W': rotatePiece('x',  1); break;
+    case 's': case 'S': rotatePiece('x', -1); break;
+    case 'q': case 'Q': rotatePiece('z',  1); break;
+    case 'e': case 'E': rotatePiece('z', -1); break;
+  }
+});
+
+// ── TOUCH / MOUSE SWIPE ON CANVAS ────────────────────────────────────────────
+// Swipe left/right → move X,  swipe up/down → move Z (pit face).
+// Y-axis (fall direction) is never triggered by swipe gestures.
+let swipeX = 0, swipeY = 0;
+const SWIPE_TH = 35;
+
+function applySwipe(endX, endY) {
+  if (!running || paused) return;
+  const dx = endX - swipeX;
+  const dy = endY - swipeY;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (dx >  SWIPE_TH) movePiece( 1, 0,  0);   // right → X+1
+    if (dx < -SWIPE_TH) movePiece(-1, 0,  0);   // left  → X-1
+  } else {
+    if (dy < -SWIPE_TH) movePiece( 0, 0,  1);   // up    → Z+1
+    if (dy >  SWIPE_TH) movePiece( 0, 0, -1);   // down  → Z-1
+  }
+}
+
+// Touch
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  swipeX = e.touches[0].clientX;
+  swipeY = e.touches[0].clientY;
+}, { passive: false });
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  applySwipe(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+}, { passive: false });
+
+// Mouse drag
+canvas.addEventListener('mousedown', e => {
+  swipeX = e.clientX;
+  swipeY = e.clientY;
+});
+canvas.addEventListener('mouseup', e => {
+  applySwipe(e.clientX, e.clientY);
+});
+
+// ── SOUND ────────────────────────────────────────────────────────────────────
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx;
+}
+function playLayerClearSound() {
+  try {
+    const ctx = getAudioCtx();
+    [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.09;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.28, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      osc.start(t);
+      osc.stop(t + 0.36);
+    });
+  } catch (e) { /* audio unavailable */ }
+}
+
+// ── CUSTOM EVENT BRIDGES (UI → game engine) ───────────────────────────────────
+document.addEventListener('game:move', e => {
+  if (!running || paused || inputPaused) return;
+  switch (e.detail.direction) {
+    case 'left':  movePiece(-1, 0,  0); break;
+    case 'right': movePiece( 1, 0,  0); break;
+    case 'up':    movePiece( 0, 0,  1); break;
+    case 'down':  movePiece( 0, 0, -1); break;
+  }
+});
+
+document.addEventListener('game:rotate', e => {
+  rotatePiece(e.detail.axis, e.detail.direction);
+});
+
+document.addEventListener('game:hard-drop', () => {
+  if (running && !paused && !inputPaused) hardDrop();
+});
+
+document.addEventListener('game:undo', () => undoLastPiece());
+document.addEventListener('game:skip', () => skipPiece());
+document.addEventListener('game:toggle-grid', () => toggleWireframe());
+document.addEventListener('game:pause-toggle', () => togglePause());
+
+// Temporary pause while falltime input is focused (no overlay shown)
+document.addEventListener('game:pause', () => {
+  if (running && !paused) inputPaused = true;
+});
+document.addEventListener('game:resume', () => {
+  if (inputPaused) { inputPaused = false; lastT = performance.now(); }
+});
+
+document.addEventListener('game:falltime-changed', e => {
+  const sec = parseFloat(e.detail.seconds);
+  if (isNaN(sec) || sec <= 0) return;
+  baseDropInterval = Math.round(sec * 1000);
+  if (running) {
+    const speedMult = Math.max(0.1, 1 - (level - 1) * 0.075);
+    dropInterval = Math.max(
+      Math.round(baseDropInterval * 0.1),
+      Math.round(baseDropInterval * speedMult)
+    );
+  }
+});
+
+// Controls toggle → switch shaft line colors to simulate thicker lines
+document.addEventListener('ui:controls-toggled', e => {
+  controlsVisible = e.detail.visible;
+  rebuildField(controlsVisible);
+  // Resize after CSS transition (~280 ms) so container has its final height
+  setTimeout(resize, 300);
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', resize);
+
+// Defer first resize until CSS layout is fully applied (external stylesheet loaded)
+window.addEventListener('load', () => {
+  resize();
+  requestAnimationFrame(loop);
+});
+</script>
+
+<!-- UI modules (load after game engine) -->
+<script src="ui/main.js"></script>
+<script src="ui/hud.js"></script>
+<script src="ui/controls.js"></script>
+<script src="ui/layers.js"></script>
+<script src="ui/tutorial.js"></script>
+
+</body>
+</html>
