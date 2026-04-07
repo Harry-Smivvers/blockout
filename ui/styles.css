@@ -222,6 +222,15 @@
   border-top: 1px solid #1a2540;
 }
 
+#controls-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 5px 0 3px;
+  flex-shrink: 0;
+}
+
 #controls-toggle {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -231,7 +240,6 @@
   cursor: pointer;
   font-family: 'Courier New', monospace;
   font-size: 12px;
-  margin: 5px 0;
   z-index: 9999;
   position: relative;
   touch-action: manipulation;
@@ -247,7 +255,6 @@
   cursor: pointer;
   font-family: 'Courier New', monospace;
   font-size: 11px;
-  margin: 0 0 3px;
   touch-action: manipulation;
 }
 #layout-toggle:active { background: rgba(255, 255, 255, 0.18); }
@@ -602,6 +609,33 @@
   background: rgba(4, 8, 20, 0.6);
 }
 
+/* HUD special buttons (UNDO / SKIP / GRID) — visible on mobile, hidden on desktop */
+#hud-special-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+#hud-special-buttons .special-btn {
+  height: 44px;
+  min-width: 46px;
+  padding: 3px 6px;
+  font-size: 10px;
+}
+
+/* === RESPONSIVE — Mobile only (< 1025px) === */
+@media (max-width: 1024px) {
+  #hud {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #hud::-webkit-scrollbar { display: none; }
+  #next-pieces { flex: 0 0 auto; }
+  #special-buttons { display: none; }
+}
+
 /* === RESPONSIVE — Tablet (≥768px) === */
 @media (min-width: 768px) {
   #hud { height: 96px; gap: 8px; }
@@ -619,6 +653,7 @@
 /* === RESPONSIVE — Desktop (≥1025px) === */
 @media (min-width: 1025px) {
   #hud { height: 104px; gap: 10px; padding: 0 12px; }
+  #hud-special-buttons { display: none; }
   .next-preview { width: 80px; height: 80px; }
   #hud-score { font-size: 17px; min-width: 100px; }
   #hud-level-lines { font-size: 17px; }

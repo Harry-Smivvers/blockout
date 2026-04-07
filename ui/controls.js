@@ -16,6 +16,7 @@
   var gridActive = false;
   var controlsVisible = false;
   var layoutSide = false;
+  var isMobile = window.innerWidth < 1025;
 
   // Expose to window.ui
   window.uiControls = {
@@ -165,7 +166,7 @@
 
   // — Special buttons (UNDO, SKIP, GRID) —
   function buildSpecialButtons() {
-    var container = document.getElementById('special-buttons');
+    var container = document.getElementById(isMobile ? 'hud-special-buttons' : 'special-buttons');
     if (!container) return;
 
     var defs = [
@@ -202,7 +203,7 @@
       toggleBtn.textContent = visible ? '\ud83d\udc41 Controls' : '\ud83d\udc41\u200d\ud83d\udde8 Show Controls';
       toggleBtn.classList.toggle('controls-hidden', !visible);
     }
-    if (layoutBtn) layoutBtn.style.display = visible ? '' : 'none';
+    if (layoutBtn && !isMobile) layoutBtn.style.display = visible ? '' : 'none';
     if (!silent) {
       dispatch('ui:controls-toggled', { visible: visible });
     }
@@ -272,7 +273,6 @@
     buildLayoutToggle();
 
     // On mobile, show controls by default; on desktop, hide
-    var isMobile = window.innerWidth < 1025;
     setControlsVisible(isMobile, false);
   });
 

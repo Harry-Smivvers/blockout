@@ -112,6 +112,7 @@ body {
       <button class="stepper-btn" id="ft-plus" aria-label="Increase">+</button>
     </div>
 
+    <div id="hud-special-buttons"></div>
     <button id="btn-tutorial" class="hud-btn" aria-label="Tutorial">?</button>
     <button id="btn-pause"    class="hud-btn" aria-label="Pause">&#9208;</button>
   </header>
@@ -128,8 +129,10 @@ body {
 
   <!-- 3. Controls (toggle shows/hides; visible by default on mobile) -->
   <div id="controls-wrap" style="display:none">
-    <button id="controls-toggle" aria-label="Toggle controls">&#128065; Controls</button>
-    <button id="layout-toggle" style="display:none" aria-label="Toggle control layout">Left/Right</button>
+    <div id="controls-toggle-row">
+      <button id="controls-toggle" aria-label="Toggle controls">&#128065; Controls</button>
+      <button id="layout-toggle" style="display:none" aria-label="Toggle control layout">Left/Right</button>
+    </div>
     <div id="controls">
       <div id="game-controls-inner">
         <!-- Rotation buttons injected by controls.js -->
@@ -1074,7 +1077,7 @@ function resize() {
   if (gl) {
     gl.viewport(0, 0, canvas.width, canvas.height);
     glVP = mat4Multiply(
-      mat4Perspective(2 * Math.atan(GD / 2 / 8) * (180 / Math.PI), cw / ch, 0.1, 300),
+      mat4Perspective(2 * Math.atan(Math.max(GD / 2, GW / 2 * ch / cw) / 8) * (180 / Math.PI), cw / ch, 0.1, 300),
       mat4LookAt([GW / 2, GD / 2, -8], [GW / 2, GD / 2, 0], [0, 1, 0])
     );
   }
@@ -1108,9 +1111,13 @@ document.addEventListener('keydown', e => {
 });
 
 // ── TOUCH / MOUSE SWIPE ON CANVAS ────────────────────────────────────────────
-// Swipe left/right → move X,  swipe up/down → move Z (pit face).
-// Y-axis (fall direction) is never triggered by swipe gestures.
+// 1 finger swipe left/right → move X,  up/down → move Z (pit face).
+// 2 finger swipe up/down   → rotate X cw/ccw
+// 2 finger swipe left/right → rotate Y cw/ccw
+// 3 finger double-tap       → hard drop
 let swipeX = 0, swipeY = 0;
+let swipeTouchCount = 0;
+let lastTripleTapTime = 0;
 const SWIPE_TH = 35;
 
 function applySwipe(endX, endY) {
@@ -1126,15 +1133,41 @@ function applySwipe(endX, endY) {
   }
 }
 
+function apply2FingerSwipe(endX, endY) {
+  if (!running || paused || inputPaused) return;
+  const dx = endX - swipeX;
+  const dy = endY - swipeY;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (dx >  SWIPE_TH) rotatePiece('y', -1);   // right → Y clockwise
+    if (dx < -SWIPE_TH) rotatePiece('y',  1);   // left  → Y counter-clockwise
+  } else {
+    if (dy < -SWIPE_TH) rotatePiece('x',  1);   // up    → X clockwise
+    if (dy >  SWIPE_TH) rotatePiece('x', -1);   // down  → X counter-clockwise
+  }
+}
+
 // Touch
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
+  swipeTouchCount = e.touches.length;
   swipeX = e.touches[0].clientX;
   swipeY = e.touches[0].clientY;
+  if (e.touches.length === 3) {
+    const now = Date.now();
+    if (now - lastTripleTapTime < 400) {
+      hardDrop();
+      lastTripleTapTime = 0;
+    } else {
+      lastTripleTapTime = now;
+    }
+  }
 }, { passive: false });
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
-  applySwipe(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  const endX = e.changedTouches[0].clientX;
+  const endY = e.changedTouches[0].clientY;
+  if (swipeTouchCount === 1)      applySwipe(endX, endY);
+  else if (swipeTouchCount === 2) apply2FingerSwipe(endX, endY);
 }, { passive: false });
 
 // Mouse drag
