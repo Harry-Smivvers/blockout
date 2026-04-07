@@ -1074,7 +1074,7 @@ function resize() {
   if (gl) {
     gl.viewport(0, 0, canvas.width, canvas.height);
     glVP = mat4Multiply(
-      mat4Perspective(42, cw / ch, 0.1, 300),
+      mat4Perspective(2 * Math.atan(GD / 2 / 8) * (180 / Math.PI), cw / ch, 0.1, 300),
       mat4LookAt([GW / 2, GD / 2, -8], [GW / 2, GD / 2, 0], [0, 1, 0])
     );
   }
