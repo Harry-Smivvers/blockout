@@ -15,6 +15,7 @@
   // — State —
   var gridActive = false;
   var controlsVisible = false;
+  var layoutSide = false;
 
   // Expose to window.ui
   window.uiControls = {
@@ -195,11 +196,13 @@
     controlsVisible = visible;
     var controls = document.getElementById('controls');
     var toggleBtn = document.getElementById('controls-toggle');
+    var layoutBtn = document.getElementById('layout-toggle');
     if (controls) controls.classList.toggle('visible', visible);
     if (toggleBtn) {
       toggleBtn.textContent = visible ? '\ud83d\udc41 Controls' : '\ud83d\udc41\u200d\ud83d\udde8 Show Controls';
       toggleBtn.classList.toggle('controls-hidden', !visible);
     }
+    if (layoutBtn) layoutBtn.style.display = visible ? '' : 'none';
     if (!silent) {
       dispatch('ui:controls-toggled', { visible: visible });
     }
@@ -210,6 +213,44 @@
     if (!btn) return;
     btn.addEventListener('click', function () {
       setControlsVisible(!controlsVisible);
+    });
+  }
+
+  // — Layout toggle (Bottom ↔ Left/Right) —
+  function setLayoutSide(side) {
+    layoutSide = side;
+    var app = document.getElementById('app');
+    var middleRow = document.getElementById('middle-row');
+    var layerIndicator = document.getElementById('layer-indicator');
+    var gameCanvasContainer = document.getElementById('game-canvas-container');
+    var controlsInner = document.getElementById('game-controls-inner');
+    var rotBtns = document.getElementById('rotation-buttons');
+    var dpadArea = document.getElementById('dpad-area');
+    var layoutBtn = document.getElementById('layout-toggle');
+
+    if (side) {
+      // Move rotation buttons to left of layer-indicator in middle-row
+      middleRow.insertBefore(rotBtns, layerIndicator);
+      // Move dpad-area to right of game-canvas-container in middle-row
+      middleRow.insertBefore(dpadArea, gameCanvasContainer.nextSibling);
+      app.classList.add('controls-side');
+      if (layoutBtn) layoutBtn.textContent = 'Bottom';
+    } else {
+      // Restore both to game-controls-inner
+      controlsInner.insertBefore(rotBtns, controlsInner.firstChild);
+      controlsInner.appendChild(dpadArea);
+      app.classList.remove('controls-side');
+      if (layoutBtn) layoutBtn.textContent = 'Left/Right';
+    }
+
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 50);
+  }
+
+  function buildLayoutToggle() {
+    var btn = document.getElementById('layout-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      setLayoutSide(!layoutSide);
     });
   }
 
@@ -228,6 +269,7 @@
     buildHardDrop();
     buildSpecialButtons();
     buildControlsToggle();
+    buildLayoutToggle();
 
     // On mobile, show controls by default; on desktop, hide
     var isMobile = window.innerWidth < 1025;

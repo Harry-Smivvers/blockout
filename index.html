@@ -124,29 +124,12 @@ body {
       <canvas id="gameCanvas"></canvas>
     </div>
 
-    <div id="axis-diagram" aria-label="Axis reference">
-      <svg viewBox="0 0 72 96" width="60" height="80">
-        <!-- Y axis (green, up) -->
-        <line x1="36" y1="68" x2="36" y2="14" stroke="#44FF44" stroke-width="2"/>
-        <polygon points="36,6 32,16 40,16" fill="#44FF44"/>
-        <text x="40" y="13" fill="#44FF44" font-family="monospace" font-size="9">Y</text>
-        <!-- X axis (red, right) -->
-        <line x1="36" y1="68" x2="68" y2="68" stroke="#FF4444" stroke-width="2"/>
-        <polygon points="76,68 66,64 66,72" fill="#FF4444"/>
-        <text x="64" y="82" fill="#FF4444" font-family="monospace" font-size="9">X</text>
-        <!-- Z axis (blue, diagonal) -->
-        <line x1="36" y1="68" x2="10" y2="88" stroke="#4488FF" stroke-width="2"/>
-        <polygon points="4,93 12,82 19,90" fill="#4488FF"/>
-        <text x="0" y="96" fill="#4488FF" font-family="monospace" font-size="8">Z</text>
-        <!-- Origin -->
-        <circle cx="36" cy="68" r="3" fill="#ccd6ff"/>
-      </svg>
-    </div>
   </div>
 
   <!-- 3. Controls (toggle shows/hides; visible by default on mobile) -->
   <div id="controls-wrap" style="display:none">
     <button id="controls-toggle" aria-label="Toggle controls">&#128065; Controls</button>
+    <button id="layout-toggle" style="display:none" aria-label="Toggle control layout">Left/Right</button>
     <div id="controls">
       <div id="game-controls-inner">
         <!-- Rotation buttons injected by controls.js -->
@@ -1079,20 +1062,19 @@ function loop(t) {
 function resize() {
   const container = document.getElementById('game-canvas-container');
   if (!container) return;
-  const cw = container.clientWidth  || 300;
-  const ch = container.clientHeight || 300;
-  const s  = Math.max(Math.min(cw, ch), 120); // square, min 120px
+  const cw = Math.max(container.clientWidth  || 300, 120);
+  const ch = Math.max(container.clientHeight || 300, 120);
 
   const pr = window.devicePixelRatio || 1;
-  canvas.width  = Math.round(s * pr);
-  canvas.height = Math.round(s * pr);
-  canvas.style.width  = s + 'px';
-  canvas.style.height = s + 'px';
+  canvas.width  = Math.round(cw * pr);
+  canvas.height = Math.round(ch * pr);
+  canvas.style.width  = cw + 'px';
+  canvas.style.height = ch + 'px';
 
   if (gl) {
     gl.viewport(0, 0, canvas.width, canvas.height);
     glVP = mat4Multiply(
-      mat4Perspective(42, 1, 0.1, 300),
+      mat4Perspective(42, cw / ch, 0.1, 300),
       mat4LookAt([GW / 2, GD / 2, -8], [GW / 2, GD / 2, 0], [0, 1, 0])
     );
   }

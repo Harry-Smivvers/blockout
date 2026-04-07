@@ -16,7 +16,7 @@
   align-items: center;
   gap: 5px;
   padding: 0 8px;
-  height: 44px;
+  height: 88px;
   background: rgba(4, 8, 20, 0.92);
   border-bottom: 1px solid #1a2540;
   overflow: hidden;
@@ -25,7 +25,7 @@
 }
 
 #hud-score {
-  font-size: 12px;
+  font-size: 15px;
   color: #fff;
   font-family: 'Courier New', monospace;
   white-space: nowrap;
@@ -42,8 +42,8 @@
 
 .next-preview {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 56px;
+  height: 56px;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 3px;
@@ -56,7 +56,7 @@
 }
 
 #hud-level-lines {
-  font-size: 12px;
+  font-size: 15px;
   color: #aaccff;
   font-family: 'Courier New', monospace;
   white-space: nowrap;
@@ -74,11 +74,11 @@
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.3);
   color: #aaccff;
-  width: 22px;
-  height: 26px;
+  width: 34px;
+  height: 44px;
   cursor: pointer;
   border-radius: 4px;
-  font-size: 15px;
+  font-size: 20px;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -90,14 +90,14 @@
 .stepper-btn:active { background: rgba(255, 255, 255, 0.3); }
 
 #ft-value {
-  width: 34px;
+  width: 44px;
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
   font-family: 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 14px;
   text-align: center;
-  padding: 2px 1px;
+  padding: 4px 2px;
   border-radius: 3px;
   -moz-appearance: textfield;
 }
@@ -115,11 +115,11 @@
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.25);
   color: #ccd6ff;
-  width: 30px;
-  height: 30px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -211,17 +211,6 @@
   display: block;
 }
 
-/* Axis diagram — right strip */
-#axis-diagram {
-  width: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 2px;
-  background: rgba(4, 8, 20, 0.6);
-  border-left: 1px solid #1a2540;
-  flex-shrink: 0;
-}
 
 /* === CONTROLS AREA === */
 #controls-wrap {
@@ -248,6 +237,20 @@
   touch-action: manipulation;
 }
 #controls-toggle:active { background: rgba(255, 255, 255, 0.22); }
+
+#layout-toggle {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #8899bb;
+  padding: 3px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  margin: 0 0 3px;
+  touch-action: manipulation;
+}
+#layout-toggle:active { background: rgba(255, 255, 255, 0.18); }
 
 @keyframes pulse-toggle {
   0%, 100% { border-color: rgba(255, 255, 255, 0.25); }
@@ -293,13 +296,21 @@
 }
 .glass-btn:active { background: rgba(255, 255, 255, 0.35); }
 
-/* Rotation buttons — 2 rows × 3 */
+/* Rotation buttons — 3 rows × 2 (paired by axis) */
 #rotation-buttons {
   display: grid;
-  grid-template-columns: repeat(3, 42px);
-  grid-template-rows: repeat(2, 42px);
+  grid-template-columns: repeat(2, 42px);
+  grid-template-rows: repeat(3, 42px);
   gap: 5px;
 }
+
+/* Rx⟲ Rx⟳ / Ry⟲ Ry⟳ / Rz⟲ Rz⟳ */
+#rotation-buttons .rot-btn:nth-child(1) { order: 0; }
+#rotation-buttons .rot-btn:nth-child(4) { order: 1; }
+#rotation-buttons .rot-btn:nth-child(2) { order: 2; }
+#rotation-buttons .rot-btn:nth-child(5) { order: 3; }
+#rotation-buttons .rot-btn:nth-child(3) { order: 4; }
+#rotation-buttons .rot-btn:nth-child(6) { order: 5; }
 
 .rot-btn {
   width: 42px;
@@ -543,7 +554,7 @@
 /* === TOAST MESSAGE === */
 #msg-toast {
   position: absolute;
-  top: 52px;
+  top: 96px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.82);
@@ -567,29 +578,51 @@
   pointer-events: none;
 }
 
+/* === SIDE LAYOUT MODE === */
+
+/* Hide the empty controls-inner row in side mode */
+#app.controls-side #game-controls-inner {
+  display: none;
+}
+
+/* Rotation buttons — left side panel */
+#app.controls-side #rotation-buttons {
+  align-self: center;
+  flex-shrink: 0;
+  padding: 6px 4px;
+  background: rgba(4, 8, 20, 0.6);
+  border-right: 1px solid #1a2540;
+}
+
+/* D-pad — right side panel */
+#app.controls-side #dpad-area {
+  align-self: center;
+  flex-shrink: 0;
+  padding: 6px 4px;
+  background: rgba(4, 8, 20, 0.6);
+}
+
 /* === RESPONSIVE — Tablet (≥768px) === */
 @media (min-width: 768px) {
-  #hud { height: 48px; gap: 8px; }
-  .next-preview { width: 36px; height: 36px; }
-  #hud-score { font-size: 13px; min-width: 80px; }
-  #hud-level-lines { font-size: 13px; }
+  #hud { height: 96px; gap: 8px; }
+  .next-preview { width: 72px; height: 72px; }
+  #hud-score { font-size: 16px; min-width: 80px; }
+  #hud-level-lines { font-size: 16px; }
   #layer-indicator { width: 46px; }
   .layer-num { display: block; width: 14px; }
-  #axis-diagram { width: 72px; }
   .rot-btn { width: 46px; height: 46px; font-size: 13px; }
-  #rotation-buttons { grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(2, 46px); gap: 6px; }
+  #rotation-buttons { grid-template-columns: repeat(2, 46px); grid-template-rows: repeat(3, 46px); gap: 6px; }
   #dpad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 4px; }
   .dpad-btn, .dpad-empty { width: 56px; height: 56px; }
 }
 
 /* === RESPONSIVE — Desktop (≥1025px) === */
 @media (min-width: 1025px) {
-  #hud { height: 52px; gap: 10px; padding: 0 12px; }
-  .next-preview { width: 40px; height: 40px; }
-  #hud-score { font-size: 14px; min-width: 100px; }
-  #hud-level-lines { font-size: 14px; }
-  #ft-value { width: 38px; font-size: 12px; }
+  #hud { height: 104px; gap: 10px; padding: 0 12px; }
+  .next-preview { width: 80px; height: 80px; }
+  #hud-score { font-size: 17px; min-width: 100px; }
+  #hud-level-lines { font-size: 17px; }
+  #ft-value { width: 50px; font-size: 15px; }
   #layer-indicator { width: 60px; }
-  #axis-diagram { width: 80px; }
   .safari-bottom-spacer { height: 0; min-height: 0; }
 }
