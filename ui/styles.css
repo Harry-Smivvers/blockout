@@ -359,7 +359,7 @@
 #dpad {
   display: grid;
   grid-template-columns: repeat(3, 52px);
-  grid-template-rows: repeat(3, 52px);
+  grid-template-rows: repeat(2, 52px);
   gap: 3px;
 }
 
@@ -648,7 +648,7 @@
   .layer-num { display: block; width: 14px; }
   .rot-btn { width: 46px; height: 46px; font-size: 13px; }
   #rotation-buttons { grid-template-columns: repeat(2, 46px); grid-template-rows: repeat(3, 46px); gap: 6px; }
-  #dpad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 4px; }
+  #dpad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 4px; }
   .dpad-btn, .dpad-empty { width: 56px; height: 56px; }
 }
 

@@ -1113,11 +1113,14 @@ document.addEventListener('keydown', e => {
 
 // ── TOUCH / MOUSE SWIPE ON CANVAS ────────────────────────────────────────────
 // 1 finger swipe left/right → move X,  up/down → move Z (pit face).
-// 2 finger swipe up/down   → rotate X cw/ccw
-// 2 finger swipe left/right → rotate Y cw/ccw
+// 2 finger swipe up/down   → rotate X cw/ccw  (once per lift)
+// 2 finger swipe left/right → rotate Y cw/ccw  (once per lift)
 // 3 finger double-tap       → hard drop
 let swipeX = 0, swipeY = 0;
 let swipeTouchCount = 0;
+let twoFingerStartX = 0, twoFingerStartY = 0;
+let twoFingerCurX   = 0, twoFingerCurY   = 0;
+let twoFingerActive = false;
 let lastTripleTapTime = 0;
 const SWIPE_TH = 35;
 
@@ -1134,10 +1137,10 @@ function applySwipe(endX, endY) {
   }
 }
 
-function apply2FingerSwipe(endX, endY) {
+function apply2FingerSwipe(startX, startY, endX, endY) {
   if (!running || paused || inputPaused) return;
-  const dx = endX - swipeX;
-  const dy = endY - swipeY;
+  const dx = endX - startX;
+  const dy = endY - startY;
   if (Math.abs(dx) > Math.abs(dy)) {
     if (dx >  SWIPE_TH) rotatePiece('y', -1);   // right → Y clockwise
     if (dx < -SWIPE_TH) rotatePiece('y',  1);   // left  → Y counter-clockwise
@@ -1150,10 +1153,19 @@ function apply2FingerSwipe(endX, endY) {
 // Touch
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  swipeTouchCount = e.touches.length;
-  swipeX = e.touches[0].clientX;
-  swipeY = e.touches[0].clientY;
-  if (e.touches.length === 3) {
+  const n = e.touches.length;
+  if (n === 1 && !twoFingerActive) {
+    swipeTouchCount = 1;
+    swipeX = e.touches[0].clientX;
+    swipeY = e.touches[0].clientY;
+  } else if (n === 2) {
+    swipeTouchCount = 2;
+    twoFingerStartX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    twoFingerStartY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    twoFingerCurX   = twoFingerStartX;
+    twoFingerCurY   = twoFingerStartY;
+    twoFingerActive = true;
+  } else if (n === 3) {
     const now = Date.now();
     if (now - lastTripleTapTime < 400) {
       hardDrop();
@@ -1163,12 +1175,26 @@ canvas.addEventListener('touchstart', e => {
     }
   }
 }, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (twoFingerActive && e.touches.length === 2) {
+    twoFingerCurX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    twoFingerCurY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+  }
+}, { passive: false });
+
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
-  const endX = e.changedTouches[0].clientX;
-  const endY = e.changedTouches[0].clientY;
-  if (swipeTouchCount === 1)      applySwipe(endX, endY);
-  else if (swipeTouchCount === 2) apply2FingerSwipe(endX, endY);
+  if (twoFingerActive && e.touches.length < 2) {
+    // Both or first finger lifted — apply exactly one rotation
+    apply2FingerSwipe(twoFingerStartX, twoFingerStartY, twoFingerCurX, twoFingerCurY);
+    twoFingerActive = false;
+    swipeTouchCount = 0;
+  } else if (swipeTouchCount === 1 && e.touches.length === 0) {
+    applySwipe(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    swipeTouchCount = 0;
+  }
 }, { passive: false });
 
 // Mouse drag

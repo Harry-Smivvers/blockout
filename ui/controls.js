@@ -110,7 +110,7 @@
     });
   }
 
-  // — Build D-pad (cross layout, 3×3 grid) —
+  // — Build D-pad (2×3 grid: ↑ on top center, →↓← on bottom row) —
   function buildDpad() {
     var container = document.getElementById('dpad');
     if (!container) return;
@@ -119,12 +119,12 @@
     var positions = [
       [1, 2, 'up',    '\u2b06'],
       [2, 1, 'left',  '\u2b05'],
+      [2, 2, 'down',  '\u2b07'],
       [2, 3, 'right', '\u27a1'],
-      [3, 2, 'down',  '\u2b07'],
     ];
 
-    // Fill all 9 cells; non-button cells get a spacer
-    for (var row = 1; row <= 3; row++) {
+    // Fill all 6 cells; non-button cells get a spacer
+    for (var row = 1; row <= 2; row++) {
       for (var col = 1; col <= 3; col++) {
         var pos = positions.find(function (p) { return p[0] === row && p[1] === col; });
         if (pos) {
