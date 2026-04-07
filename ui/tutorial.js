@@ -43,6 +43,15 @@
       'R Soft Drop &nbsp; Space Hard Drop<br>',
       'P Pause &nbsp; Tab Toggle controls',
     '</div>',
+    '<hr class="state-divider">',
+    '<div class="state-row">',
+      '<input type="text" id="state-display" class="state-input" readonly placeholder="Start a game to generate a state code">',
+      '<button id="btn-copy-state" class="state-btn">&#128203; Copy</button>',
+    '</div>',
+    '<div class="state-row">',
+      '<input type="text" id="state-restore-input" class="state-input" placeholder="Paste state code here...">',
+      '<button id="btn-restore-state" class="state-btn">&#8635; Restore</button>',
+    '</div>',
     '<button class="tutorial-close" id="tutorial-close-btn">&#10003; Got it</button>',
   ].join('');
 
@@ -63,6 +72,39 @@
           overlay.classList.add('hidden');
         });
       }
+
+      var copyBtn = box.querySelector('#btn-copy-state');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+          var el = box.querySelector('#state-display');
+          if (!el || !el.value) return;
+          navigator.clipboard.writeText(el.value).catch(function () {
+            el.select(); document.execCommand('copy');
+          });
+        });
+      }
+
+      var restoreBtn = box.querySelector('#btn-restore-state');
+      if (restoreBtn) {
+        restoreBtn.addEventListener('click', function () {
+          var input = box.querySelector('#state-restore-input');
+          if (!input || !input.value) return;
+          if (typeof restoreGameState === 'function' && restoreGameState(input.value)) {
+            localStorage.setItem(STORAGE_KEY, '1');
+            overlay.classList.add('hidden');
+          } else {
+            input.style.borderColor = '#ff4444';
+            setTimeout(function () { input.style.borderColor = ''; }, 1000);
+          }
+        });
+      }
+    }
+
+    // Update state code every time the overlay opens
+    var stateEl = overlay.querySelector('#state-display');
+    if (stateEl) {
+      stateEl.value = (typeof encodeGameState === 'function' && typeof running !== 'undefined' && running)
+        ? encodeGameState() : '';
     }
 
     overlay.classList.remove('hidden');

@@ -478,7 +478,7 @@
   align-items: center;
   justify-content: center;
   z-index: 300;
-  padding: 16px;
+  padding: 8px;
 }
 #tutorial-overlay.hidden { display: none; }
 
@@ -487,15 +487,14 @@
   border: 1px solid #2a4060;
   border-radius: 12px;
   padding: 20px;
-  max-width: 340px;
-  width: 100%;
-  max-height: 90vh;
+  width: min(95vw, 700px);
+  max-height: 95vh;
   overflow-y: auto;
   font-family: 'Courier New', monospace;
 }
 
 .tutorial-box h2 {
-  font-size: 16px;
+  font-size: 32px;
   color: #5599ff;
   letter-spacing: 3px;
   margin-bottom: 14px;
@@ -510,14 +509,14 @@
 }
 
 .axis-badge {
-  width: 32px;
-  height: 32px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 28px;
   flex-shrink: 0;
   border: 2px solid;
 }
@@ -526,7 +525,7 @@
 .axis-badge.z { color: #4488FF; border-color: #4488FF; background: rgba(68, 136, 255, 0.12); }
 
 .axis-desc {
-  font-size: 11px;
+  font-size: 22px;
   color: #9ab;
   line-height: 1.7;
 }
@@ -537,11 +536,53 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: 22px;
   color: #7788aa;
   margin: 8px 0;
   line-height: 1.6;
 }
+
+hr.state-divider {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 10px 0 8px;
+}
+
+.state-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.state-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ccd6ff;
+  font-family: 'Courier New', monospace;
+  font-size: 22px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  outline: none;
+}
+.state-input:focus { border-color: #4477bb; }
+
+.state-btn {
+  background: #112240;
+  border: 1px solid #4477bb;
+  color: #aaccff;
+  padding: 10px 16px;
+  font-family: 'Courier New', monospace;
+  font-size: 22px;
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+.state-btn:active { background: #1a3360; }
 
 .tutorial-close {
   display: block;
@@ -655,6 +696,7 @@
 /* === RESPONSIVE — Desktop (≥1025px) === */
 @media (min-width: 1025px) {
   #hud { height: 104px; gap: 10px; padding: 0 12px; }
+  .tutorial-box { max-height: none; }
   .next-preview { width: 80px; height: 80px; }
   #hud-score { font-size: 17px; min-width: 100px; }
   #hud-level-lines { font-size: 17px; }

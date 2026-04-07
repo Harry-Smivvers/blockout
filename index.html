@@ -1009,6 +1009,91 @@ function triggerGameOver() {
   document.getElementById('controls-wrap').style.display = 'none';
 }
 
+// ── SAVE / RESTORE STATE ────────────────────────────────────────────────────
+// Format: 126 hex chars (grid 500 bits) + optional piece section
+// Piece: defIdx(2) gx(1) gy(2) gz(1) nCells(1) [cx cy cz](1 each) — uppercase hex
+function encodeGameState() {
+  const bytes = new Uint8Array(63);
+  for (let y = 0; y < GH; y++)
+    for (let x = 0; x < GW; x++)
+      for (let z = 0; z < GD; z++) {
+        const bit = y * GW * GD + x * GD + z;
+        if (grid[y][x][z]) bytes[bit >> 3] |= 1 << (bit & 7);
+      }
+  let s = '';
+  for (const b of bytes) s += b.toString(16).padStart(2, '0');
+  if (piece) {
+    s += piece.defIdx.toString(16).padStart(2, '0');
+    s += piece.gx.toString(16);
+    s += piece.gy.toString(16).padStart(2, '0');
+    s += piece.gz.toString(16);
+    s += piece.cells.length.toString(16);
+    for (const [cx, cy, cz] of piece.cells) s += cx.toString(16) + cy.toString(16) + cz.toString(16);
+  }
+  return s.toUpperCase();
+}
+
+function restoreGameState(str) {
+  str = str.trim().toLowerCase();
+  if (str.length < 126 || !/^[0-9a-f]+$/.test(str)) return false;
+  // Decode grid
+  initGrid();
+  for (let y = 0; y < GH; y++)
+    for (let x = 0; x < GW; x++)
+      for (let z = 0; z < GD; z++) {
+        const bit = y * GW * GD + x * GD + z;
+        grid[y][x][z] = (parseInt(str.slice((bit >> 3)*2, (bit >> 3)*2+2), 16) >> (bit & 7)) & 1;
+      }
+  // Decode piece
+  piece = null;
+  if (str.length > 126) {
+    let i = 126;
+    const defIdx = parseInt(str.slice(i, i+2), 16); i += 2;
+    const gx     = parseInt(str[i],    16);          i += 1;
+    const gy     = parseInt(str.slice(i, i+2), 16);  i += 2;
+    const gz     = parseInt(str[i],    16);           i += 1;
+    const n      = parseInt(str[i],    16);           i += 1;
+    if (defIdx < PIECE_DEFS.length && n >= 1 && n <= 8) {
+      const cells = [];
+      for (let c = 0; c < n; c++) {
+        cells.push([parseInt(str[i],16), parseInt(str[i+1],16), parseInt(str[i+2],16)]);
+        i += 3;
+      }
+      piece = { cells, color: LAYER_COLORS[Math.min(gy, GH-1)], defIdx, gx, gy, gz };
+    }
+  }
+  // Always reset score/level/lines on restore
+  score = 0; level = 1; lines = 0;
+  dropTimer = 0; dropInterval = baseDropInterval;
+  updateUI();
+  // Bring game into running state if needed
+  if (!running) {
+    queue = [];
+    dropTimer = 0; dropInterval = baseDropInterval;
+    paused = false; inputPaused = false; pieceWireframe = false;
+    canUndo = false; lastLockedPiece = null; lastLockedCells = null;
+    running = true; lastT = performance.now();
+    for (let i = 0; i < 4; i++) queue.push({
+      defIdx: Math.floor(Math.random() * PIECE_DEFS.length),
+      color:  COLORS[Math.floor(Math.random() * COLORS.length)],
+    });
+    document.getElementById('overlay').classList.add('hidden');
+    document.getElementById('ov-help').style.display = '';
+    document.getElementById('controls-wrap').style.display = '';
+    window.ui?.setPaused(false);
+    window.ui?.setGridButtonActive(false);
+    updateUI(); resize();
+  }
+  if (!piece) spawnPiece();
+  // Re-render
+  placedCells = []; pieceCells = []; pieceRgb = null; ghostCells = []; ghostRgb = null;
+  renderPlaced();
+  if (piece) { renderPiece(); renderGhost(); }
+  renderNextPreviews();
+  updateLayerStrips();
+  return true;
+}
+
 function startGame() {
   initGrid();
   queue = [];
@@ -1146,7 +1231,7 @@ function apply2FingerSwipe(startX, startY, endX, endY) {
     if (dx < -SWIPE_TH) rotatePiece('y',  1);   // left  → Y counter-clockwise
   } else {
     if (dy < -SWIPE_TH) rotatePiece('x',  1);   // up    → X clockwise
-    if (dy >  SWIPE_TH) rotatePiece('x', -1);   // down  → X counter-clockwise
+    if (dy >  SWIPE_TH) rotatePiece('z',  1);   // down  → Z clockwise
   }
 }
 
