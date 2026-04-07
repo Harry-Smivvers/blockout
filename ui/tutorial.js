@@ -70,6 +70,8 @@
         closeBtn.addEventListener('click', function () {
           localStorage.setItem(STORAGE_KEY, '1');
           overlay.classList.add('hidden');
+          var toggleRow = document.getElementById('controls-toggle-row');
+          if (toggleRow) toggleRow.style.visibility = '';
         });
       }
 
@@ -92,6 +94,8 @@
           if (typeof restoreGameState === 'function' && restoreGameState(input.value)) {
             localStorage.setItem(STORAGE_KEY, '1');
             overlay.classList.add('hidden');
+            var toggleRow = document.getElementById('controls-toggle-row');
+            if (toggleRow) toggleRow.style.visibility = '';
           } else {
             input.style.borderColor = '#ff4444';
             setTimeout(function () { input.style.borderColor = ''; }, 1000);
@@ -108,6 +112,8 @@
     }
 
     overlay.classList.remove('hidden');
+    var toggleRow = document.getElementById('controls-toggle-row');
+    if (toggleRow) toggleRow.style.visibility = 'hidden';
   }
 
   document.addEventListener('DOMContentLoaded', function () {
