@@ -42,6 +42,9 @@
         btn.textContent = isPaused ? '\u25b6' : '\u23f8';
         btn.classList.toggle('paused', isPaused);
       }
+      // Hide controls-wrap while paused
+      const wrap = document.getElementById('controls-wrap');
+      if (wrap && wrap.style.display !== 'none') wrap.style.visibility = isPaused ? 'hidden' : '';
       // Disable all game control buttons while paused
       const controls = document.getElementById('controls');
       if (controls) {

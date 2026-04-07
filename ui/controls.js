@@ -166,7 +166,7 @@
 
   // — Special buttons (UNDO, SKIP, GRID) —
   function buildSpecialButtons() {
-    var container = document.getElementById(isMobile ? 'hud-special-buttons' : 'special-buttons');
+    var container = document.getElementById('hud-special-buttons');
     if (!container) return;
 
     var defs = [
@@ -203,7 +203,7 @@
       toggleBtn.textContent = visible ? '\ud83d\udc41 Controls' : '\ud83d\udc41\u200d\ud83d\udde8 Show Controls';
       toggleBtn.classList.toggle('controls-hidden', !visible);
     }
-    if (layoutBtn && !isMobile) layoutBtn.style.display = visible ? '' : 'none';
+    if (layoutBtn) layoutBtn.style.display = visible ? '' : 'none';
     if (!silent) {
       dispatch('ui:controls-toggled', { visible: visible });
     }
@@ -225,8 +225,10 @@
     var layerIndicator = document.getElementById('layer-indicator');
     var gameCanvasContainer = document.getElementById('game-canvas-container');
     var controlsInner = document.getElementById('game-controls-inner');
+    var controlsDiv = document.getElementById('controls');
     var rotBtns = document.getElementById('rotation-buttons');
     var dpadArea = document.getElementById('dpad-area');
+    var dropBtn = document.getElementById('btn-hard-drop');
     var layoutBtn = document.getElementById('layout-toggle');
 
     if (side) {
@@ -234,11 +236,14 @@
       middleRow.insertBefore(rotBtns, layerIndicator);
       // Move dpad-area to right of game-canvas-container in middle-row
       middleRow.insertBefore(dpadArea, gameCanvasContainer.nextSibling);
+      // Move drop button out of (now-hidden) game-controls-inner
+      controlsDiv.insertBefore(dropBtn, controlsInner.nextSibling);
       app.classList.add('controls-side');
       if (layoutBtn) layoutBtn.textContent = 'Bottom';
     } else {
-      // Restore both to game-controls-inner
+      // Restore rotation, drop, dpad into game-controls-inner (left → center → right)
       controlsInner.insertBefore(rotBtns, controlsInner.firstChild);
+      controlsInner.appendChild(dropBtn);
       controlsInner.appendChild(dpadArea);
       app.classList.remove('controls-side');
       if (layoutBtn) layoutBtn.textContent = 'Left/Right';

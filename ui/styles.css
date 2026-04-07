@@ -274,7 +274,7 @@
   transition: max-height 0.28s ease;
 }
 #controls.visible {
-  max-height: 260px;
+  max-height: 320px;
 }
 
 #game-controls-inner {
@@ -377,22 +377,22 @@
   pointer-events: none;
 }
 
-/* Hard drop button */
+/* Hard drop button — center column in bottom mode, full-width in side mode */
 #btn-hard-drop {
-  width: 160px;
-  height: 44px;
+  flex: 1;
+  min-width: 60px;
+  height: 88px;
   background: rgba(255, 70, 70, 0.18);
   border: 2px solid rgba(255, 100, 100, 0.45);
-  border-radius: 22px;
+  border-radius: 16px;
   color: #ff9999;
   font-family: 'Courier New', monospace;
-  font-size: 13px;
+  font-size: 18px;
   font-weight: bold;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 2px auto 0;
   letter-spacing: 2px;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -402,13 +402,16 @@
 }
 #btn-hard-drop:active { background: rgba(255, 70, 70, 0.38); }
 
-/* Special buttons row */
-#special-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  padding: 4px 8px 6px;
+/* In side mode the button is moved outside #game-controls-inner */
+#app.controls-side #btn-hard-drop {
+  flex: none;
+  width: 80%;
+  max-width: 300px;
+  margin: 4px auto;
 }
+
+/* Special buttons row — hidden (buttons live in HUD now) */
+#special-buttons { display: none; }
 
 .special-btn {
   padding: 6px 10px;
@@ -633,7 +636,6 @@
   }
   #hud::-webkit-scrollbar { display: none; }
   #next-pieces { flex: 0 0 auto; }
-  #special-buttons { display: none; }
 }
 
 /* === RESPONSIVE — Tablet (≥768px) === */
@@ -653,7 +655,6 @@
 /* === RESPONSIVE — Desktop (≥1025px) === */
 @media (min-width: 1025px) {
   #hud { height: 104px; gap: 10px; padding: 0 12px; }
-  #hud-special-buttons { display: none; }
   .next-preview { width: 80px; height: 80px; }
   #hud-score { font-size: 17px; min-width: 100px; }
   #hud-level-lines { font-size: 17px; }
