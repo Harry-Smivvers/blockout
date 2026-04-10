@@ -1207,6 +1207,7 @@ let twoFingerStartX = 0, twoFingerStartY = 0;
 let twoFingerCurX   = 0, twoFingerCurY   = 0;
 let twoFingerActive = false;
 let lastTripleTapTime = 0;
+let lastTwoFingerTapTime = 0;
 const SWIPE_TH = 35;
 
 function applySwipe(endX, endY) {
@@ -1281,8 +1282,14 @@ canvas.addEventListener('touchend', e => {
     const tdx = Math.abs(twoFingerCurX - twoFingerStartX);
     const tdy = Math.abs(twoFingerCurY - twoFingerStartY);
     if (tdx < SWIPE_TH && tdy < SWIPE_TH) {
-      // Two-finger tap — hard drop
-      hardDrop();
+      // Two-finger tap — hard drop on double-tap
+      const now = Date.now();
+      if (now - lastTwoFingerTapTime < 400) {
+        hardDrop();
+        lastTwoFingerTapTime = 0;
+      } else {
+        lastTwoFingerTapTime = now;
+      }
     } else {
       // Two-finger swipe — rotate
       apply2FingerSwipe(twoFingerStartX, twoFingerStartY, twoFingerCurX, twoFingerCurY);
