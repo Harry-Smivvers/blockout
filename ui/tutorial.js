@@ -55,7 +55,23 @@
     '<button class="tutorial-close" id="tutorial-close-btn">&#10003; Got it</button>',
   ].join('');
 
-  function showTutorial() {
+  var startupClose = false;
+
+  function closeTutorial() {
+    var overlay = document.getElementById('tutorial-overlay');
+    if (!overlay) return;
+    localStorage.setItem(STORAGE_KEY, '1');
+    overlay.classList.add('hidden');
+    var toggleRow = document.getElementById('controls-toggle-row');
+    if (toggleRow) toggleRow.style.visibility = '';
+    // On startup close: start the game directly instead of showing the start screen
+    if (startupClose) {
+      startupClose = false;
+      if (typeof startGame === 'function') startGame();
+    }
+  }
+
+  function showTutorial(isStartup) {
     var overlay = document.getElementById('tutorial-overlay');
     if (!overlay) return;
 
@@ -67,12 +83,7 @@
 
       var closeBtn = box.querySelector('#tutorial-close-btn');
       if (closeBtn) {
-        closeBtn.addEventListener('click', function () {
-          localStorage.setItem(STORAGE_KEY, '1');
-          overlay.classList.add('hidden');
-          var toggleRow = document.getElementById('controls-toggle-row');
-          if (toggleRow) toggleRow.style.visibility = '';
-        });
+        closeBtn.addEventListener('click', closeTutorial);
       }
 
       var copyBtn = box.querySelector('#btn-copy-state');
@@ -92,16 +103,18 @@
           var input = box.querySelector('#state-restore-input');
           if (!input || !input.value) return;
           if (typeof restoreGameState === 'function' && restoreGameState(input.value)) {
-            localStorage.setItem(STORAGE_KEY, '1');
-            overlay.classList.add('hidden');
-            var toggleRow = document.getElementById('controls-toggle-row');
-            if (toggleRow) toggleRow.style.visibility = '';
+            closeTutorial();
           } else {
             input.style.borderColor = '#ff4444';
             setTimeout(function () { input.style.borderColor = ''; }, 1000);
           }
         });
       }
+
+      // Click outside the box to close
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeTutorial();
+      });
     }
 
     // Update state code every time the overlay opens
@@ -111,16 +124,21 @@
         ? encodeGameState() : '';
     }
 
+    // On startup: hide the start screen so only the tutorial is visible
+    if (isStartup) {
+      var startOverlay = document.getElementById('overlay');
+      if (startOverlay) startOverlay.style.display = 'none';
+      startupClose = true;
+    }
+
     overlay.classList.remove('hidden');
     var toggleRow = document.getElementById('controls-toggle-row');
     if (toggleRow) toggleRow.style.visibility = 'hidden';
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    // Auto-show on first visit
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      showTutorial();
-    }
+    // Always show tutorial on startup (replaces the start screen)
+    showTutorial(true);
 
     // [?] button re-opens the tutorial
     var btn = document.getElementById('btn-tutorial');
