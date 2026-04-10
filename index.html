@@ -1272,8 +1272,15 @@ canvas.addEventListener('touchmove', e => {
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
   if (twoFingerActive && e.touches.length < 2) {
-    // Both or first finger lifted — apply exactly one rotation
-    apply2FingerSwipe(twoFingerStartX, twoFingerStartY, twoFingerCurX, twoFingerCurY);
+    const tdx = Math.abs(twoFingerCurX - twoFingerStartX);
+    const tdy = Math.abs(twoFingerCurY - twoFingerStartY);
+    if (tdx < SWIPE_TH && tdy < SWIPE_TH) {
+      // Two-finger tap — hard drop
+      hardDrop();
+    } else {
+      // Two-finger swipe — rotate
+      apply2FingerSwipe(twoFingerStartX, twoFingerStartY, twoFingerCurX, twoFingerCurY);
+    }
     twoFingerActive = false;
     swipeTouchCount = 0;
   } else if (swipeTouchCount === 1 && e.touches.length === 0) {

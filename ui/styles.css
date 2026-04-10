@@ -282,7 +282,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 4px 12px;
-  gap: 8px;
+  gap: 20px;
 }
 
 /* Glassmorphism base for game buttons */
@@ -405,9 +405,9 @@
 /* In side mode the button is moved outside #game-controls-inner */
 #app.controls-side #btn-hard-drop {
   flex: none;
-  width: 80%;
-  max-width: 300px;
-  margin: 4px auto;
+  width: 100%;
+  margin: 4px 0;
+  border-radius: 0;
 }
 
 /* Special buttons row — hidden (buttons live in HUD now) */

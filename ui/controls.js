@@ -204,6 +204,13 @@
       toggleBtn.classList.toggle('controls-hidden', !visible);
     }
     if (layoutBtn) layoutBtn.style.display = visible ? '' : 'none';
+    // In side mode, also hide/show the left and right side panels
+    if (layoutSide) {
+      var rotBtns = document.getElementById('rotation-buttons');
+      var dpadArea = document.getElementById('dpad-area');
+      if (rotBtns) rotBtns.style.display = visible ? '' : 'none';
+      if (dpadArea) dpadArea.style.display = visible ? '' : 'none';
+    }
     if (!silent) {
       dispatch('ui:controls-toggled', { visible: visible });
     }
@@ -242,6 +249,9 @@
       if (layoutBtn) layoutBtn.textContent = 'Bottom';
     } else {
       // Restore rotation, drop, dpad into game-controls-inner (left → center → right)
+      // Reset any inline display set while in side mode
+      if (rotBtns) rotBtns.style.display = '';
+      if (dpadArea) dpadArea.style.display = '';
       controlsInner.insertBefore(rotBtns, controlsInner.firstChild);
       controlsInner.appendChild(dropBtn);
       controlsInner.appendChild(dpadArea);
