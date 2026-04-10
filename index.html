@@ -1217,8 +1217,14 @@ function applySwipe(endX, endY) {
     if (dx >  SWIPE_TH) movePiece( 1, 0,  0);   // right → X+1
     if (dx < -SWIPE_TH) movePiece(-1, 0,  0);   // left  → X-1
   } else {
-    if (dy < -SWIPE_TH) movePiece( 0, 0,  1);   // up    → Z+1
-    if (dy >  SWIPE_TH) movePiece( 0, 0, -1);   // down  → Z-1
+    // Full upward swipe (start in lower half, cover ≥40% of canvas) → hard drop
+    const rect = canvas.getBoundingClientRect();
+    if (dy < 0 && swipeY > rect.top + rect.height * 0.5 && -dy > rect.height * 0.4) {
+      hardDrop();
+    } else {
+      if (dy < -SWIPE_TH) movePiece( 0, 0,  1);   // up    → Z+1
+      if (dy >  SWIPE_TH) movePiece( 0, 0, -1);   // down  → Z-1
+    }
   }
 }
 
