@@ -327,7 +327,7 @@ let inputPaused = false;             // temporary pause while falltime input is 
 let gl = null;
 let solidProg = null, lineProg = null;
 // Cached attribute / uniform locations — filled by initWebGL()
-let solid_aPos, solid_uMVP, solid_uColor;
+let solid_aPos, solid_uMVP, solid_uColor, solid_uAlpha;
 let line_aPos,  line_uMVP,  line_uColor, line_uAlpha, line_uOffset;
 let glVP = null;           // View-Projection matrix, updated by resize()
 let fieldBufs = [];        // [{ buf, count, color:[r,g,b] }] — rebuilt by buildField()
@@ -420,7 +420,8 @@ const LINE_VERT_SRC = `
 const SOLID_FRAG_SRC = `
   precision mediump float;
   uniform vec3 uColor;
-  void main() { gl_FragColor = vec4(uColor, 1.0); }
+  uniform float uAlpha;
+  void main() { gl_FragColor = vec4(uColor, uAlpha); }
 `;
 const LINE_FRAG_SRC = `
   precision mediump float;
@@ -460,6 +461,7 @@ function initWebGL() {
   solid_aPos   = gl.getAttribLocation (solidProg, 'aPos');
   solid_uMVP   = gl.getUniformLocation(solidProg, 'uMVP');
   solid_uColor = gl.getUniformLocation(solidProg, 'uColor');
+  solid_uAlpha = gl.getUniformLocation(solidProg, 'uAlpha');
 
   line_aPos    = gl.getAttribLocation (lineProg,  'aPos');
   line_uMVP    = gl.getUniformLocation(lineProg,  'uMVP');
@@ -726,8 +728,9 @@ function drawPiece() {
     }
     gl.disableVertexAttribArray(line_aPos);
   } else {
-    // Pass 1: solid faces
+    // Pass 1: solid faces (40% transparent)
     gl.useProgram(solidProg);
+    gl.uniform1f(solid_uAlpha, 0.6);
     gl.bindBuffer(gl.ARRAY_BUFFER, solidCubeBuf);
     gl.enableVertexAttribArray(solid_aPos);
     gl.vertexAttribPointer(solid_aPos, 3, gl.FLOAT, false, 0, 0);
@@ -788,6 +791,7 @@ function drawPlaced() {
 
   // Pass 1 — solid faces (polygon offset active globally, prevents z-fighting)
   gl.useProgram(solidProg);
+  gl.uniform1f(solid_uAlpha, 1.0);
   gl.bindBuffer(gl.ARRAY_BUFFER, solidCubeBuf);
   gl.enableVertexAttribArray(solid_aPos);
   gl.vertexAttribPointer(solid_aPos, 3, gl.FLOAT, false, 0, 0);
