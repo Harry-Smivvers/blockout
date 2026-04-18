@@ -32,8 +32,8 @@
       if (window.uiLayers) window.uiLayers.update(layerArray, currentLayer, layerColors);
     },
 
-    setGridButtonActive(isActive) {
-      if (window.uiControls) window.uiControls.setGridActive(isActive);
+    setSolidButtonActive(isActive) {
+      if (window.uiControls) window.uiControls.setSolidActive(isActive);
     },
 
     setPaused(isPaused) {

@@ -13,17 +13,17 @@
   }
 
   // — State —
-  var gridActive = false;
+  var solidActive = false;
   var controlsVisible = false;
   var layoutSide = false;
   var isMobile = window.innerWidth < 1025;
 
   // Expose to window.ui
   window.uiControls = {
-    setGridActive: function (isActive) {
-      gridActive = isActive;
-      var btn = document.getElementById('special-grid');
-      if (btn) btn.classList.toggle('active', isActive);
+    setSolidActive: function (isActive) {
+      solidActive = isActive;
+      var btn = document.getElementById('special-solid');
+      if (btn) btn.textContent = isActive ? '\u25a6 Trans.' : '\u25a6 Solid';
     }
   };
 
@@ -164,7 +164,7 @@
     });
   }
 
-  // — Special buttons (UNDO, SKIP, GRID) —
+  // — Special buttons (UNDO, SKIP, SOLID) —
   function buildSpecialButtons() {
     var container = document.getElementById('hud-special-buttons');
     if (!container) return;
@@ -172,7 +172,7 @@
     var defs = [
       { id: 'special-undo', label: '\u21a9 UNDO', event: 'game:undo' },
       { id: 'special-skip', label: '\u23ed SKIP', event: 'game:skip' },
-      { id: 'special-grid', label: '\u25a6 GRID', event: 'game:toggle-grid', toggle: true },
+      { id: 'special-solid', label: '\u25a6 Solid', event: 'game:toggle-solid', toggle: true },
     ];
 
     defs.forEach(function (d) {
@@ -183,8 +183,8 @@
       btn.addEventListener('click', function () {
         haptic();
         if (d.toggle) {
-          gridActive = !gridActive;
-          btn.classList.toggle('active', gridActive);
+          solidActive = !solidActive;
+          btn.textContent = solidActive ? '\u25a6 Trans.' : '\u25a6 Solid';
         }
         dispatch(d.event, {});
       });

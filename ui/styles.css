@@ -666,6 +666,7 @@ hr.state-divider {
   padding: 3px 6px;
   font-size: 10px;
 }
+#special-solid { width: 58px; }
 
 /* === RESPONSIVE — Mobile only (< 1025px) === */
 @media (max-width: 1024px) {

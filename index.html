@@ -316,7 +316,7 @@ let grid = [], gridColor = [];
 let piece = null;
 let queue = [];
 let score = 0, level = 1, lines = 0;
-let running = false, paused = false, pieceWireframe = false;
+let running = false, paused = false, pieceSolid = false;
 let lastLockedPiece = null, lastLockedCells = null, canUndo = false;
 let baseDropInterval = 10000;        // ms — overridden by falltime stepper (default 10 s)
 let dropTimer = 0, dropInterval = 10000, lastT = 0;
@@ -712,25 +712,13 @@ function renderGhost() {
   }
 }
 
-// Draw active piece: solid+edges in normal mode, edges-only in wireframe mode.
+// Draw active piece: solid (alpha 1.0) or transparent (alpha 0.6) depending on pieceSolid.
 function drawPiece() {
   if (!gl || !pieceCells.length || !glVP) return;
-  if (pieceWireframe) {
-    gl.useProgram(lineProg);
-    gl.bindBuffer(gl.ARRAY_BUFFER, edgeCubeBuf);
-    gl.enableVertexAttribArray(line_aPos);
-    gl.vertexAttribPointer(line_aPos, 3, gl.FLOAT, false, 0, 0);
-    gl.uniform3fv(line_uColor, pieceRgb);
-    gl.uniform1f(line_uAlpha, 0.55);
-    for (const { wx, wy, wz } of pieceCells) {
-      gl.uniformMatrix4fv(line_uMVP, false, mat4Multiply(glVP, mat4Translation(wx, wy, wz)));
-      gl.drawArrays(gl.LINES, 0, edgeCubeCount);
-    }
-    gl.disableVertexAttribArray(line_aPos);
-  } else {
-    // Pass 1: solid faces (40% transparent)
+  {
+    // Pass 1: solid faces
     gl.useProgram(solidProg);
-    gl.uniform1f(solid_uAlpha, 0.6);
+    gl.uniform1f(solid_uAlpha, pieceSolid ? 1.0 : 0.6);
     gl.bindBuffer(gl.ARRAY_BUFFER, solidCubeBuf);
     gl.enableVertexAttribArray(solid_aPos);
     gl.vertexAttribPointer(solid_aPos, 3, gl.FLOAT, false, 0, 0);
@@ -987,10 +975,10 @@ function togglePause() {
   if (!paused) lastT = performance.now();
 }
 
-function toggleWireframe() {
-  pieceWireframe = !pieceWireframe;
+function togglePieceSolid() {
+  pieceSolid = !pieceSolid;
   renderPiece();
-  window.ui?.setGridButtonActive(pieceWireframe);
+  window.ui?.setSolidButtonActive(pieceSolid);
 }
 
 function undoLastPiece() {
@@ -1093,7 +1081,7 @@ function restoreGameState(str) {
   if (!running) {
     queue = [];
     dropTimer = 0; dropInterval = baseDropInterval;
-    paused = false; inputPaused = false; pieceWireframe = false;
+    paused = false; inputPaused = false; pieceSolid = false;
     canUndo = false; lastLockedPiece = null; lastLockedCells = null;
     running = true; lastT = performance.now();
     for (let i = 0; i < 4; i++) queue.push({
@@ -1104,7 +1092,7 @@ function restoreGameState(str) {
     document.getElementById('ov-help').style.display = '';
     document.getElementById('controls-wrap').style.display = '';
     window.ui?.setPaused(false);
-    window.ui?.setGridButtonActive(false);
+    window.ui?.setSolidButtonActive(false);
     updateUI(); resize();
   }
   if (!piece) spawnPiece();
@@ -1122,11 +1110,11 @@ function startGame() {
   queue = [];
   score = 0; level = 1; lines = 0;
   dropTimer = 0; dropInterval = baseDropInterval;
-  piece = null; paused = false; inputPaused = false; pieceWireframe = false;
+  piece = null; paused = false; inputPaused = false; pieceSolid = false;
   canUndo = false; lastLockedPiece = null; lastLockedCells = null;
   updateUI();
   updateLayerStrips();
-  window.ui?.setGridButtonActive(false);
+  window.ui?.setSolidButtonActive(false);
   window.ui?.setPaused(false);
   pieceCells = []; pieceRgb = null; ghostCells = []; ghostRgb = null; placedCells = [];
   for (let i = 0; i < 4; i++) {
@@ -1199,7 +1187,7 @@ function resize() {
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { togglePause(); return; }
-  if (e.key === 't' || e.key === 'T' || e.key === 'g' || e.key === 'G') { toggleWireframe(); return; }
+  if (e.key === 't' || e.key === 'T' || e.key === 'g' || e.key === 'G') { togglePieceSolid(); return; }
   if (e.key === 'u' || e.key === 'U') { undoLastPiece(); return; }
   if (e.key === 'n' || e.key === 'N') { skipPiece(); return; }
   if (!running || paused) return;
@@ -1390,7 +1378,7 @@ document.addEventListener('game:hard-drop', () => {
 
 document.addEventListener('game:undo', () => undoLastPiece());
 document.addEventListener('game:skip', () => skipPiece());
-document.addEventListener('game:toggle-grid', () => toggleWireframe());
+document.addEventListener('game:toggle-solid', () => togglePieceSolid());
 document.addEventListener('game:pause-toggle', () => togglePause());
 
 // Temporary pause while falltime input is focused (no overlay shown)
