@@ -301,6 +301,7 @@ const PIECE_DEFS = [
   [[0,0,0],[1,0,0],[0,0,1],[0,1,0]],
   [[0,0,0],[1,0,0],[1,0,1],[1,1,1]],
   [[0,0,0],[0,0,1],[0,0,2],[1,0,0]],
+  [[0,0,0],[1,0,0],[0,0,1]],
 ];
 
 const COLORS = [
@@ -397,7 +398,7 @@ function updateNpSizes() {
       npCanvases[i].height = h;
       npGl[i].viewport(0, 0, w, h);
       npVP[i] = mat4Multiply(
-        mat4Perspective(48, w / h, 0.1, 50),
+        mat4Perspective(55, w / h, 0.1, 50),
         mat4LookAt([3.2, 3.2, 4], [1, 0.5, 1], [0, 1, 0])
       );
     }
@@ -815,8 +816,21 @@ function renderNextPreviews() {
     if (i >= queue.length) continue;
     const { defIdx, color } = queue[i];
     npRgbs[i] = hexToRgb(color);
-    for (const [cx, cy, cz] of PIECE_DEFS[defIdx])
-      npQueues[i].push({ wx: cx, wy: cy, wz: cz });
+    const cells = PIECE_DEFS[defIdx];
+    let mnX = Infinity, mxX = -Infinity;
+    let mnY = Infinity, mxY = -Infinity;
+    let mnZ = Infinity, mxZ = -Infinity;
+    for (const [cx, cy, cz] of cells) {
+      if (cx < mnX) mnX = cx; if (cx > mxX) mxX = cx;
+      if (cy < mnY) mnY = cy; if (cy > mxY) mxY = cy;
+      if (cz < mnZ) mnZ = cz; if (cz > mxZ) mxZ = cz;
+    }
+    // Shift piece centre to lookAt point (1, 0.5, 1)
+    const ox = 0.5 - (mnX + mxX) / 2;
+    const oy =     - (mnY + mxY) / 2;
+    const oz = 0.5 - (mnZ + mxZ) / 2;
+    for (const [cx, cy, cz] of cells)
+      npQueues[i].push({ wx: cx + ox, wy: cy + oy, wz: cz + oz });
   }
 }
 
@@ -1021,7 +1035,9 @@ function triggerGameOver() {
   sc.textContent = score.toLocaleString();
   document.getElementById('ov-help').style.display = 'none';
   document.getElementById('startBtn').textContent = 'PLAY AGAIN';
-  document.getElementById('overlay').classList.remove('hidden');
+  const ov = document.getElementById('overlay');
+  ov.style.display = '';
+  ov.classList.remove('hidden');
   document.getElementById('controls-wrap').style.display = 'none';
 }
 
